@@ -117,6 +117,13 @@ export default function App() {
   const [manageGroupBusy, setManageGroupBusy] = useState(false);
   const [manageGroupError, setManageGroupError] = useState("");
 
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPasswordInput, setCurrentPasswordInput] = useState("");
+  const [newPasswordInput, setNewPasswordInput] = useState("");
+  const [changePasswordBusy, setChangePasswordBusy] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState("");
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState(false);
+
   const [active, setActive] = useState(null); // { id, type, name }
   const [messages, setMessages] = useState([]);
   const [online, setOnline] = useState([]);
@@ -525,6 +532,41 @@ export default function App() {
     }
   }
 
+  function openChangePassword() {
+    setCurrentPasswordInput("");
+    setNewPasswordInput("");
+    setChangePasswordError("");
+    setChangePasswordSuccess(false);
+    setShowChangePassword(true);
+  }
+
+  function closeChangePassword() {
+    setShowChangePassword(false);
+  }
+
+  async function handleChangePassword(e) {
+    e.preventDefault();
+    setChangePasswordBusy(true);
+    setChangePasswordError("");
+    setChangePasswordSuccess(false);
+    try {
+      await authedFetch("change-password", {
+        method: "POST",
+        body: JSON.stringify({
+          currentPassword: currentPasswordInput,
+          newPassword: newPasswordInput,
+        }),
+      });
+      setCurrentPasswordInput("");
+      setNewPasswordInput("");
+      setChangePasswordSuccess(true);
+    } catch (err) {
+      setChangePasswordError(err.message);
+    } finally {
+      setChangePasswordBusy(false);
+    }
+  }
+
   function handleBackToInbox() {
     stopTypingNow();
     enterInbox();
@@ -842,12 +884,18 @@ export default function App() {
                 <div className="bubble-text bubble-deleted-text">ההודעה נמחקה</div>
               ) : editingMessageId === m.id ? (
                 <form className="bubble-edit-form" onSubmit={handleSaveEditedMessage}>
-                  <input
-                    type="text"
+                  <textarea
                     autoFocus
                     value={editingText}
                     onChange={(e) => setEditingText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSaveEditedMessage(e);
+                      }
+                    }}
                     maxLength={2000}
+                    rows={1}
                   />
                   <div className="bubble-edit-actions">
                     <button type="submit">שמירה</button>
@@ -908,12 +956,18 @@ export default function App() {
               hidden
             />
           </label>
-          <input
-            type="text"
-            placeholder="הקלידי הודעה..."
+          <textarea
+            placeholder="הקלידי הודעה... (Shift+Enter לירידת שורה)"
             value={draft}
             onChange={(e) => handleDraftChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend(e);
+              }
+            }}
             maxLength={2000}
+            rows={1}
           />
           <button type="submit">שלחי</button>
         </form>
@@ -955,6 +1009,7 @@ export default function App() {
             setShowNewChat(false);
             setFormError("");
           }}
+          onOpenChangePassword={openChangePassword}
           onLogout={handleLogout}
         />
 
@@ -1134,6 +1189,52 @@ export default function App() {
               </button>
             </form>
           </div>
+        </div>
+      )}
+
+      {showChangePassword && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeChangePassword();
+          }}
+        >
+          <form className="modal-panel" onSubmit={handleChangePassword}>
+            <div className="modal-head">
+              <h3>שינוי סיסמה</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={closeChangePassword}
+                aria-label="סגירה"
+              >
+                ✕
+              </button>
+            </div>
+
+            <input
+              autoFocus
+              type="password"
+              placeholder="סיסמה נוכחית"
+              value={currentPasswordInput}
+              onChange={(e) => setCurrentPasswordInput(e.target.value)}
+              maxLength={100}
+            />
+            <input
+              type="password"
+              placeholder="סיסמה חדשה (לפחות 6 תווים)"
+              value={newPasswordInput}
+              onChange={(e) => setNewPasswordInput(e.target.value)}
+              maxLength={100}
+            />
+            {changePasswordError && <div className="join-error">{changePasswordError}</div>}
+            {changePasswordSuccess && (
+              <div className="system-notice">הסיסמה עודכנה בהצלחה</div>
+            )}
+            <button type="submit" className="btn btn-primary" disabled={changePasswordBusy}>
+              {changePasswordBusy ? "מעדכנת..." : "עדכני סיסמה"}
+            </button>
+          </form>
         </div>
       )}
     </>

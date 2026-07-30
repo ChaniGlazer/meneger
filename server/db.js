@@ -383,7 +383,7 @@ async function getHoursReport({ from, to, user_id, user_ids } = {}) {
   const { rows } = await query(
     `SELECT u.id AS user_id, u.username,
        COUNT(tl.id)::int AS entries,
-       SUM(EXTRACT(EPOCH FROM (tl.clock_out - tl.clock_in)) / 3600) AS total_hours
+       SUM(EXTRACT(EPOCH FROM (tl.clock_out - tl.clock_in)) / 3600)::float8 AS total_hours
      FROM time_logs tl
      JOIN users u ON u.id = tl.user_id
      ${where}

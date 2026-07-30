@@ -402,6 +402,22 @@ body {
   flex-shrink: 0;
 }
 
+.sidebar-change-password {
+  margin: 8px 8px 0;
+  padding: 10px;
+  border: none;
+  background: none;
+  color: #555;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.sidebar-change-password:hover {
+  background: #f0f0f0;
+}
+
 .sidebar-logout {
   margin: 8px;
   padding: 10px;
@@ -642,12 +658,20 @@ body {
   gap: 6px;
 }
 
-.bubble-edit-form input {
+.bubble-edit-form input,
+.bubble-edit-form textarea {
   padding: 6px 10px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.6);
   font-size: 13px;
   color: #222;
+}
+
+.bubble-edit-form textarea {
+  resize: none;
+  max-height: 150px;
+  font-family: inherit;
+  line-height: 1.4;
 }
 
 .bubble-edit-actions {
@@ -674,17 +698,26 @@ body {
 
 .composer {
   display: flex;
+  align-items: flex-end;
   gap: 10px;
   padding: 14px 20px;
   border-top: 1px solid #eee;
 }
 
-.composer input {
+.composer input,
+.composer textarea {
   flex: 1;
   padding: 10px 14px;
   border-radius: 10px;
   border: 1px solid #ddd;
   font-size: 14px;
+}
+
+.composer textarea {
+  resize: none;
+  max-height: 150px;
+  font-family: inherit;
+  line-height: 1.4;
 }
 
 .composer-error {

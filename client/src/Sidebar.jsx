@@ -20,6 +20,7 @@ export default function Sidebar({
   onEnterAdmin,
   onOpenNewChat,
   onOpenNewGroup,
+  onOpenChangePassword,
   onLogout,
 }) {
   return (
@@ -110,6 +111,9 @@ export default function Sidebar({
         )}
       </div>
 
+      <button type="button" className="sidebar-change-password" onClick={onOpenChangePassword}>
+        שינוי סיסמה
+      </button>
       <button type="button" className="sidebar-logout" onClick={onLogout}>
         התנתקות
       </button>
