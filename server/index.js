@@ -1,4 +1,5 @@
 require("dotenv").config();
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
@@ -705,6 +706,14 @@ app.get(
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
+});
+
+// Serves the built client (client/dist) so the browser only ever talks to
+// this one origin - no separate static-site deployment needed.
+const clientDist = path.join(__dirname, "../client/dist");
+app.use(express.static(clientDist));
+app.get(/^(?!\/api|\/socket\.io).*/, (_req, res) => {
+  res.sendFile(path.join(clientDist, "index.html"));
 });
 
 app.use((err, _req, res, next) => {

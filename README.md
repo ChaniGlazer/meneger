@@ -77,39 +77,31 @@ npm run dev
 
 ## פריסה לפרודקשן (חינמי)
 
-הארכיטקטורה: **בסיס הנתונים וקבצי ההעלאה יושבים ב-Supabase** (לא תלויים בדיסק של אף שרת), **השרת** (Express + Socket.IO) רץ ב-Render, וה**קליינט** (build סטטי) רץ ב-Vercel/Netlify.
+הארכיטקטורה: **בסיס הנתונים וקבצי ההעלאה יושבים ב-Supabase** (לא תלויים בדיסק של אף שרת), וה**שרת + הקליינט** רצים יחד כשירות Render **אחד** — ה-Express server מגיש גם את קבצי ה-build של הקליינט, כך שכל התעבורה (API, WebSocket, והעמוד עצמו) עוברת דרך דומיין יחיד.
 
 ### 1. Supabase (בסיס נתונים + אחסון קבצים) — חינמי
 
 1. הרשמה ב-supabase.com ויצירת פרויקט חדש.
 2. **Database** → **Connect** (או Settings → Database) → להעתיק את ה-Connection string (URI). זה יהיה `DATABASE_URL`. מומלץ להשתמש ב-"Session pooler" (פורט 5432 או 6543 לפי מה שמוצג), ולהחליף את `[YOUR-PASSWORD]` בסיסמת ה-DB שנקבעה ביצירת הפרויקט.
-3. **Storage** → יצירת bucket חדש בשם `uploads`, ולסמן אותו כ-**Public** (כדי שקישורי הקבצים בצ'אט יעבדו ישירות בלי אימות נוסף).
+3. **Storage** → יצירת bucket חדש בשם `uploads`, ולסמן אותו כ-**Public** (כדי שקישורי הקבצים יעבדו ישירות בלי אימות נוסף).
 4. **Settings** → **API** → להעתיק את `Project URL` (זה `SUPABASE_URL`) ואת ה-`service_role` key (**לא** ה-anon key — זה `SUPABASE_SERVICE_KEY`. שימו לב: המפתח הזה עוקף את כל ההרשאות, אסור לחשוף אותו בקליינט, רק בשרת).
 5. אין צורך להריץ שום SQL ידנית — השרת יוצר את כל הטבלאות אוטומטית בעליה הראשונה שלו (`init()` ב-`db.js`).
 
-### 2. Render (שרת) — חינמי
+### 2. Render (שרת + קליינט יחד) — חינמי
 
 1. render.com → **New** → **Web Service**, לחבר את ריפו ה-GitHub הזה.
-2. **Root Directory**: `server`
-3. **Build Command**: `npm install`
-4. **Start Command**: `npm start`
-5. **Environment Variables** (מתוך `server/.env.example`): `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_BUCKET=uploads`. את `PORT` לא צריך להגדיר — Render מזריק אותו אוטומטית.
-6. Deploy. לאחר סיום, לשמור את הכתובת שמקבלים (למשל `https://your-app.onrender.com`) — היא תשמש כ-`VITE_API_URL`/`VITE_SOCKET_URL` בקליינט.
-7. הערה: ב-free tier השרת "נרדם" אחרי כ-15 דקות בלי תעבורה, וההתעוררות לוקחת כמה שניות בבקשה הראשונה. זה לא משפיע על שמירת הנתונים (הם ב-Supabase), רק על זמן התגובה הראשוני.
-
-### 3. Vercel או Netlify (קליינט) — חינמי
-
-1. לחבר את אותו ריפו.
-2. **Root Directory**: `client`
-3. **Build Command**: `npm run build`, **Output Directory**: `dist`
-4. **Environment Variables**: `VITE_API_URL` ו-`VITE_SOCKET_URL` — שניהם שווים לכתובת ה-Render מהשלב הקודם (למשל `https://your-app.onrender.com`, בלי `/` בסוף).
-5. Deploy. הכתובת הסופית (למשל `https://your-app.vercel.app`) היא מה ששולחים לעובדות כדי להתחבר.
+2. **Root Directory**: להשאיר ריק (שורש הריפו).
+3. **Build Command**: `cd client && npm install && npm run build && cd ../server && npm install`
+4. **Start Command**: `node server/index.js`
+5. **Environment Variables** (מתוך `server/.env.example`): `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_BUCKET=uploads`. את `PORT` לא צריך להגדיר — Render מזריק אותו אוטומטית. אין צורך ב-`VITE_API_URL`/`VITE_SOCKET_URL` כלל — הקליינט מדבר עם אותו origin שהגיש אותו.
+6. Deploy. הכתובת שמקבלים (למשל `https://your-app.onrender.com`) היא הכתובת היחידה ששולחים לעובדות, וגם היחידה שצריך לאשר מול כל מסנן תוכן (כמו NetFree) אם רלוונטי.
+7. הערה: ב-free tier השירות "נרדם" אחרי כ-15 דקות בלי תעבורה, וההתעוררות לוקחת כמה שניות בבקשה הראשונה. זה לא משפיע על שמירת הנתונים (הם ב-Supabase), רק על זמן התגובה הראשוני.
 
 ### בדיקה שהכל עובד
 
 - `https://your-app.onrender.com/api/health` אמור להחזיר `{"ok":true}`.
-- להיכנס לכתובת הקליינט, להירשם, לשלוח הודעה עם קובץ מצורף, ולוודא שהקישור לקובץ עובד (זה מאמת שגם ה-DB וגם ה-Storage מחוברים נכון).
-- לאחר דיפלוי מחדש של השרת (Render) — הנתונים וההודעות אמורים **להישאר**, כי הם ב-Supabase ולא בדיסק של Render.
+- לפתוח את `https://your-app.onrender.com/` בדפדפן, להירשם, לשלוח הודעה עם קובץ מצורף, ולוודא שהקישור לקובץ עובד (זה מאמת שגם ה-DB וגם ה-Storage מחוברים נכון).
+- לאחר דיפלוי מחדש — הנתונים וההודעות אמורים **להישאר**, כי הם ב-Supabase ולא בדיסק של Render.
 
 ## הרחבות עתידיות אפשריות
 

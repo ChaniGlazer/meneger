@@ -685,7 +685,7 @@ export default function App() {
                             })
                           }
                         >
-                          פתח צ'אט משימה
+                          פתח שיחת משימה
                         </button>
                       )}
                     </div>
