@@ -836,6 +836,36 @@ app.post(
   })
 );
 
+app.post(
+  "/api/admin/invites/bulk",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    const rawEmails = Array.isArray(req.body?.emails) ? req.body.emails : [];
+    const candidates = [
+      ...new Set(rawEmails.map((e) => String(e).trim().toLowerCase().slice(0, 200))),
+    ];
+
+    const added = [];
+    const invalid = [];
+    const skipped = [];
+    for (const email of candidates) {
+      if (!EMAIL_RE.test(email)) {
+        invalid.push(email);
+        continue;
+      }
+      const invite = await addInvite(email, req.username);
+      if (invite) {
+        added.push(email);
+      } else {
+        skipped.push(email);
+      }
+    }
+
+    res.status(201).json({ added, skipped, invalid });
+  })
+);
+
 app.delete(
   "/api/admin/invites/:email",
   requireAuth,

@@ -62,6 +62,8 @@ export default function AdminDashboard({ myUserId, myRole }) {
   const [invitesError, setInvitesError] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvSummary, setCsvSummary] = useState(null);
 
   const [tasks, setTasks] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(true);
@@ -114,6 +116,44 @@ export default function AdminDashboard({ myUserId, myRole }) {
     } finally {
       setInviteBusy(false);
     }
+  }
+
+  function handleCsvUpload(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setCsvBusy(true);
+    setInvitesError("");
+    setCsvSummary(null);
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const text = String(reader.result || "");
+      const emails = [...new Set((text.match(/[^\s,;]+@[^\s,;]+\.[^\s,;]+/g) || []).map((e) => e.toLowerCase()))];
+      if (emails.length === 0) {
+        setInvitesError("לא נמצאו כתובות אימייל בקובץ");
+        setCsvBusy(false);
+        return;
+      }
+      try {
+        const data = await authedFetch("admin/invites/bulk", {
+          method: "POST",
+          body: JSON.stringify({ emails }),
+        });
+        setCsvSummary(data);
+        fetchInvites();
+      } catch (err) {
+        setInvitesError(err.message);
+      } finally {
+        setCsvBusy(false);
+      }
+    };
+    reader.onerror = () => {
+      setInvitesError("שגיאה בקריאת הקובץ");
+      setCsvBusy(false);
+    };
+    reader.readAsText(file, "utf-8");
   }
 
   async function handleRemoveInvite(email) {
@@ -622,7 +662,19 @@ export default function AdminDashboard({ myUserId, myRole }) {
           <button type="submit" className="btn btn-primary" disabled={inviteBusy}>
             {inviteBusy ? "מוסיף…" : "הוספת הזמנה"}
           </button>
+          <label className="btn btn-secondary">
+            {csvBusy ? "מעלה…" : "העלאת רשימה מ-CSV"}
+            <input type="file" accept=".csv,text/csv" onChange={handleCsvUpload} disabled={csvBusy} hidden />
+          </label>
         </form>
+
+        {csvSummary && (
+          <p className="empty-hint">
+            נוספו {csvSummary.added.length} הזמנות
+            {csvSummary.skipped.length > 0 && `, ${csvSummary.skipped.length} כבר היו מוזמנות`}
+            {csvSummary.invalid.length > 0 && `, ${csvSummary.invalid.length} כתובות לא תקינות`}
+          </p>
+        )}
 
         {invitesError && <div className="join-error">{invitesError}</div>}
 
