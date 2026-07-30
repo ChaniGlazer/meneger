@@ -19,7 +19,16 @@ function formatElapsed(ms) {
  * bar and the inbox home screen's shift card can share one source of truth
  * instead of drifting when a shift is started/ended from either place.
  */
-export default function TimeClock({ openLog, loading, busy, error, now, onClockIn, onClockOut }) {
+export default function TimeClock({
+  openLog,
+  loading,
+  busy,
+  error,
+  now,
+  hasWorkedToday,
+  onClockIn,
+  onClockOut,
+}) {
   return (
     <div className="time-clock-bar">
       <div className="app-brand">
@@ -47,7 +56,7 @@ export default function TimeClock({ openLog, loading, busy, error, now, onClockI
           ) : (
             <>
               <span className="time-clock-status" role="status" aria-live="polite">
-                עוד לא התחלת לעבוד היום
+                {hasWorkedToday ? "בהפסקה" : "עוד לא התחלת לעבוד היום"}
               </span>
               <button
                 type="button"
@@ -55,7 +64,7 @@ export default function TimeClock({ openLog, loading, busy, error, now, onClockI
                 onClick={onClockIn}
                 disabled={busy}
               >
-                התחלת עבודה
+                {hasWorkedToday ? "המשך עבודה" : "התחלת עבודה"}
               </button>
             </>
           )}

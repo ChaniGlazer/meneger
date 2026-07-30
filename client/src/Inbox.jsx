@@ -40,6 +40,7 @@ export default function Inbox({
   timeClockLoading,
   timeClockBusy,
   timeClockError,
+  timeClockHasWorkedToday,
   onClockIn,
   onClockOut,
   onSelectConversation,
@@ -96,7 +97,11 @@ export default function Inbox({
           ) : (
             <div className="inbox-shift-row">
               <span role="status" aria-live="polite">
-                {timeClockOpenLog ? "את/ה נוכחת כרגע" : "עוד לא התחלת לעבוד היום"}
+                {timeClockOpenLog
+                  ? "את נוכחת כרגע"
+                  : timeClockHasWorkedToday
+                  ? "בהפסקה"
+                  : "עוד לא התחלת לעבוד היום"}
               </span>
               <button
                 type="button"
@@ -104,7 +109,7 @@ export default function Inbox({
                 onClick={timeClockOpenLog ? onClockOut : onClockIn}
                 disabled={timeClockBusy}
               >
-                {timeClockOpenLog ? "סיום עבודה" : "התחלת עבודה"}
+                {timeClockOpenLog ? "סיום עבודה" : timeClockHasWorkedToday ? "המשך עבודה" : "התחלת עבודה"}
               </button>
             </div>
           )}

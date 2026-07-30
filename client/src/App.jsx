@@ -107,6 +107,7 @@ export default function App() {
   const [timeClockBusy, setTimeClockBusy] = useState(false);
   const [timeClockError, setTimeClockError] = useState("");
   const [timeClockNow, setTimeClockNow] = useState(Date.now());
+  const [timeClockHasWorkedToday, setTimeClockHasWorkedToday] = useState(false);
   const [authMode, setAuthMode] = useState("login"); // "login" | "register"
   const [authName, setAuthName] = useState("");
   const [authEmail, setAuthEmail] = useState("");
@@ -239,8 +240,17 @@ export default function App() {
   function fetchTimeClockStatus() {
     setTimeClockLoading(true);
     setTimeClockError("");
-    authedFetch("time-logs?open=true")
-      .then((data) => setTimeClockOpenLog(data.timeLogs[0] || null))
+    const todayStr = new Date().toISOString().slice(0, 10);
+    Promise.all([
+      authedFetch("time-logs?open=true"),
+      // Distinguishes "never started today" from "on a break between shifts" -
+      // both used to render the same "עוד לא התחלת לעבוד" text.
+      authedFetch(`time-logs?from=${todayStr}&to=${todayStr}`),
+    ])
+      .then(([openData, todayData]) => {
+        setTimeClockOpenLog(openData.timeLogs[0] || null);
+        setTimeClockHasWorkedToday(todayData.timeLogs.some((log) => log.clock_out));
+      })
       .catch(() => setTimeClockError("שגיאה בטעינת שעון הנוכחות"))
       .finally(() => setTimeClockLoading(false));
   }
@@ -275,6 +285,7 @@ export default function App() {
         body: JSON.stringify({ clock_out: new Date().toISOString() }),
       });
       setTimeClockOpenLog(null);
+      setTimeClockHasWorkedToday(true);
     } catch (err) {
       setTimeClockError(err.message);
     } finally {
@@ -1184,6 +1195,7 @@ export default function App() {
           timeClockLoading={timeClockLoading}
           timeClockBusy={timeClockBusy}
           timeClockError={timeClockError}
+          timeClockHasWorkedToday={timeClockHasWorkedToday}
           onClockIn={handleClockIn}
           onClockOut={handleClockOut}
           onSelectConversation={openConversation}
@@ -1212,6 +1224,7 @@ export default function App() {
         busy={timeClockBusy}
         error={timeClockError}
         now={timeClockNow}
+        hasWorkedToday={timeClockHasWorkedToday}
         onClockIn={handleClockIn}
         onClockOut={handleClockOut}
       />
