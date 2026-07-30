@@ -71,6 +71,19 @@ async function init() {
   `);
 
   await query(`
+    CREATE TABLE IF NOT EXISTS task_assignees (
+      task_id INTEGER NOT NULL REFERENCES tasks(id),
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      PRIMARY KEY (task_id, user_id)
+    )
+  `);
+  await query(`
+    INSERT INTO task_assignees (task_id, user_id)
+    SELECT id, assigned_to FROM tasks WHERE assigned_to IS NOT NULL
+    ON CONFLICT DO NOTHING
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS task_attachments (
       id SERIAL PRIMARY KEY,
       task_id INTEGER NOT NULL REFERENCES tasks(id),
@@ -227,6 +240,35 @@ async function attachAttachmentsToTasks(tasks) {
   return tasks.map((t) => ({ ...t, attachments: byTask.get(t.id) || [] }));
 }
 
+async function attachAssigneesToTasks(tasks) {
+  if (tasks.length === 0) return tasks;
+  const ids = [...new Set(tasks.map((t) => t.id))];
+  const { rows } = await query(
+    `SELECT ta.task_id, u.id, u.username
+     FROM task_assignees ta
+     JOIN users u ON u.id = ta.user_id
+     WHERE ta.task_id = ANY($1::int[])
+     ORDER BY u.username`,
+    [ids]
+  );
+  const byTask = new Map();
+  for (const row of rows) {
+    if (!byTask.has(row.task_id)) byTask.set(row.task_id, []);
+    byTask.get(row.task_id).push({ id: row.id, username: row.username });
+  }
+  return tasks.map((t) => ({ ...t, assignees: byTask.get(t.id) || [] }));
+}
+
+async function setTaskAssignees(taskId, userIds) {
+  await query("DELETE FROM task_assignees WHERE task_id = $1", [taskId]);
+  for (const userId of userIds) {
+    await query(
+      "INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+      [taskId, userId]
+    );
+  }
+}
+
 async function addTaskAttachment({ task_id, filename, original_name, mime_type, size, uploaded_by }) {
   const { rows } = await query(
     `INSERT INTO task_attachments (task_id, filename, original_name, mime_type, size, uploaded_by)
@@ -238,30 +280,33 @@ async function addTaskAttachment({ task_id, filename, original_name, mime_type, 
 
 async function deleteTask(id) {
   await query("DELETE FROM task_attachments WHERE task_id = $1", [id]);
+  await query("DELETE FROM task_assignees WHERE task_id = $1", [id]);
   await query("DELETE FROM tasks WHERE id = $1", [id]);
 }
 
-async function createTask({ title, description, assigned_to, due_date, priority, status, conversation_id }) {
+async function createTask({ title, description, assignee_ids, due_date, priority, status, conversation_id }) {
   const { rows } = await query(
-    `INSERT INTO tasks (title, description, assigned_to, due_date, priority, status, conversation_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+    `INSERT INTO tasks (title, description, due_date, priority, status, conversation_id)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
     [
       title,
       description ?? null,
-      assigned_to ?? null,
       due_date ?? null,
       priority || "medium",
       status || "todo",
       conversation_id ?? null,
     ]
   );
+  await setTaskAssignees(rows[0].id, assignee_ids || []);
   return getTaskById(rows[0].id);
 }
 
 async function getTaskById(id) {
   const { rows } = await query("SELECT * FROM tasks WHERE id = $1", [id]);
   if (!rows[0]) return undefined;
-  return (await attachAttachmentsToTasks([rows[0]]))[0];
+  const [withAttachments] = await attachAttachmentsToTasks([rows[0]]);
+  const [withAssignees] = await attachAssigneesToTasks([withAttachments]);
+  return withAssignees;
 }
 
 async function listTasks({ assigned_to, status, priority } = {}) {
@@ -269,7 +314,7 @@ async function listTasks({ assigned_to, status, priority } = {}) {
   const params = [];
   if (assigned_to != null) {
     params.push(assigned_to);
-    clauses.push(`assigned_to = $${params.length}`);
+    clauses.push(`EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = tasks.id AND ta.user_id = $${params.length})`);
   }
   if (status) {
     params.push(status);
@@ -281,7 +326,8 @@ async function listTasks({ assigned_to, status, priority } = {}) {
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query(`SELECT * FROM tasks ${where} ORDER BY id DESC`, params);
-  return attachAttachmentsToTasks(rows);
+  const withAttachments = await attachAttachmentsToTasks(rows);
+  return attachAssigneesToTasks(withAttachments);
 }
 
 async function listAllTasksForAdmin({ assigned_to, status, priority, assigned_to_in } = {}) {
@@ -289,7 +335,7 @@ async function listAllTasksForAdmin({ assigned_to, status, priority, assigned_to
   const params = [];
   if (assigned_to != null) {
     params.push(assigned_to);
-    clauses.push(`t.assigned_to = $${params.length}`);
+    clauses.push(`EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = $${params.length})`);
   }
   if (status) {
     params.push(status);
@@ -301,29 +347,33 @@ async function listAllTasksForAdmin({ assigned_to, status, priority, assigned_to
   }
   if (assigned_to_in) {
     params.push(assigned_to_in);
-    clauses.push(`t.assigned_to = ANY($${params.length}::int[])`);
+    clauses.push(
+      `EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ANY($${params.length}::int[]))`
+    );
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query(
-    `SELECT t.*, u.username AS assigned_to_username
-     FROM tasks t
-     LEFT JOIN users u ON u.id = t.assigned_to
-     ${where}
-     ORDER BY t.id DESC`,
+    `SELECT t.* FROM tasks t ${where} ORDER BY t.id DESC`,
     params
   );
-  return attachAttachmentsToTasks(rows);
+  const withAttachments = await attachAttachmentsToTasks(rows);
+  return attachAssigneesToTasks(withAttachments);
 }
 
-const TASK_UPDATE_COLUMNS = ["title", "description", "assigned_to", "due_date", "priority", "status"];
+const TASK_UPDATE_COLUMNS = ["title", "description", "due_date", "priority", "status"];
 
 async function updateTask(id, fields) {
   const keys = Object.keys(fields).filter((k) => TASK_UPDATE_COLUMNS.includes(k));
-  if (keys.length === 0) return getTaskById(id);
-  const params = keys.map((k) => fields[k]);
-  const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(", ");
-  params.push(id);
-  await query(`UPDATE tasks SET ${setClause}, updated_at = now() WHERE id = $${params.length}`, params);
+  if (keys.length > 0) {
+    const params = keys.map((k) => fields[k]);
+    const setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(", ");
+    params.push(id);
+    await query(`UPDATE tasks SET ${setClause}, updated_at = now() WHERE id = $${params.length}`, params);
+  }
+  if (fields.assignee_ids !== undefined) {
+    await setTaskAssignees(id, fields.assignee_ids);
+    await query("UPDATE tasks SET updated_at = now() WHERE id = $1", [id]);
+  }
   return getTaskById(id);
 }
 

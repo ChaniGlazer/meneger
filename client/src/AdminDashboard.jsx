@@ -152,7 +152,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
       due_date: "",
       priority: "medium",
       status: "todo",
-      assigned_to: "",
+      assigned_to: [],
     });
   }
 
@@ -165,7 +165,16 @@ export default function AdminDashboard({ myUserId, myRole }) {
       due_date: task.due_date || "",
       priority: task.priority || "medium",
       status: task.status || "todo",
-      assigned_to: task.assigned_to != null ? String(task.assigned_to) : "",
+      assigned_to: (task.assignees || []).map((a) => String(a.id)),
+    });
+  }
+
+  function toggleTaskAssignee(id) {
+    setTaskForm((f) => {
+      const next = new Set(f.assigned_to);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { ...f, assigned_to: [...next] };
     });
   }
 
@@ -195,7 +204,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
       due_date: taskForm.due_date || null,
       priority: taskForm.priority,
       status: taskForm.status,
-      assigned_to: taskForm.assigned_to || null,
+      assigned_to: taskForm.assigned_to.map(Number),
     };
     try {
       if (editingTask === "new") {
@@ -439,17 +448,19 @@ export default function AdminDashboard({ myUserId, myRole }) {
                 </label>
                 <label>
                   משויכת ל-
-                  <select
-                    value={taskForm.assigned_to}
-                    onChange={(e) => setTaskForm((f) => ({ ...f, assigned_to: e.target.value }))}
-                  >
-                    <option value="">— ללא —</option>
+                  <div className="user-list task-assignee-list">
                     {employees.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
+                      <label key={emp.id} className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={taskForm.assigned_to.includes(String(emp.id))}
+                          onChange={() => toggleTaskAssignee(String(emp.id))}
+                        />
                         {emp.username}
-                      </option>
+                      </label>
                     ))}
-                  </select>
+                    {employees.length === 0 && <p>אין עובדות זמינות</p>}
+                  </div>
                 </label>
               </div>
 
@@ -481,7 +492,11 @@ export default function AdminDashboard({ myUserId, myRole }) {
               {tasks.map((task) => (
                 <tr key={task.id}>
                   <td className="admin-table-title-cell">{task.title}</td>
-                  <td>{task.assigned_to_username || <span className="admin-cell-muted">—</span>}</td>
+                  <td>
+                    {task.assignees?.length
+                      ? task.assignees.map((a) => a.username).join(", ")
+                      : <span className="admin-cell-muted">—</span>}
+                  </td>
                   <td>
                     <span className={`pill status-${task.status}`}>
                       {TASK_STATUS_LABELS[task.status] || task.status}

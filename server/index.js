@@ -408,17 +408,25 @@ app.post(
         .json({ error: `סטטוס לא תקין, חייב להיות אחד מ: ${TASK_STATUSES.join(", ")}` });
     }
 
-    let assignedTo = null;
-    let assignedToUser = null;
-    if (req.body?.assigned_to != null && req.body.assigned_to !== "") {
-      assignedTo = parseId(req.body.assigned_to);
-      assignedToUser = assignedTo !== null ? await findUserById(assignedTo) : null;
-      if (!assignedToUser) {
+    const rawAssignees = Array.isArray(req.body?.assigned_to)
+      ? req.body.assigned_to
+      : req.body?.assigned_to != null && req.body.assigned_to !== ""
+      ? [req.body.assigned_to]
+      : [];
+    const assigneeIds = [...new Set(rawAssignees.map(parseId))];
+    if (assigneeIds.some((id) => id === null)) {
+      return res.status(400).json({ error: "משתמשת לא קיימת" });
+    }
+    const assigneeUsers = [];
+    for (const id of assigneeIds) {
+      const user = await findUserById(id);
+      if (!user) {
         return res.status(400).json({ error: "משתמשת לא קיימת" });
       }
+      assigneeUsers.push(user);
     }
 
-    const chatMembers = [...new Set([req.username, assignedToUser?.username].filter(Boolean))];
+    const chatMembers = [...new Set([req.username, ...assigneeUsers.map((u) => u.username)])];
     const conversationId = await createGroupConversation(title.slice(0, 50), chatMembers);
     for (const [socketId, client] of clients) {
       if (chatMembers.includes(client.username)) {
@@ -429,7 +437,7 @@ app.post(
     const task = await createTask({
       title,
       description,
-      assigned_to: assignedTo,
+      assignee_ids: assigneeIds,
       due_date: dueDate,
       conversation_id: conversationId,
       priority,
@@ -530,32 +538,37 @@ app.patch(
       }
       fields.status = req.body.status;
     }
-    let newAssigneeUser = null;
+    let newAssigneeUsers = null;
     if (req.body?.assigned_to !== undefined) {
-      if (req.body.assigned_to == null || req.body.assigned_to === "") {
-        fields.assigned_to = null;
-      } else {
-        const assignedTo = parseId(req.body.assigned_to);
-        newAssigneeUser = assignedTo !== null ? await findUserById(assignedTo) : null;
-        if (!newAssigneeUser) {
-          return res.status(400).json({ error: "משתמשת לא קיימת" });
-        }
-        fields.assigned_to = assignedTo;
+      const rawAssignees = Array.isArray(req.body.assigned_to)
+        ? req.body.assigned_to
+        : req.body.assigned_to != null && req.body.assigned_to !== ""
+        ? [req.body.assigned_to]
+        : [];
+      const ids = [...new Set(rawAssignees.map(parseId))];
+      if (ids.some((assigneeId) => assigneeId === null)) {
+        return res.status(400).json({ error: "משתמשת לא קיימת" });
       }
+      newAssigneeUsers = [];
+      for (const assigneeId of ids) {
+        const user = await findUserById(assigneeId);
+        if (!user) return res.status(400).json({ error: "משתמשת לא קיימת" });
+        newAssigneeUsers.push(user);
+      }
+      fields.assignee_ids = ids;
     }
 
     const task = await updateTask(id, fields);
 
-    if (
-      newAssigneeUser &&
-      newAssigneeUser.id !== existing.assigned_to &&
-      task.conversation_id &&
-      !(await isMember(task.conversation_id, newAssigneeUser.username))
-    ) {
-      await addConversationMember(task.conversation_id, newAssigneeUser.username);
-      for (const [socketId, client] of clients) {
-        if (client.username === newAssigneeUser.username) {
-          io.sockets.sockets.get(socketId)?.join(task.conversation_id);
+    if (newAssigneeUsers && task.conversation_id) {
+      for (const user of newAssigneeUsers) {
+        if (!(await isMember(task.conversation_id, user.username))) {
+          await addConversationMember(task.conversation_id, user.username);
+          for (const [socketId, client] of clients) {
+            if (client.username === user.username) {
+              io.sockets.sockets.get(socketId)?.join(task.conversation_id);
+            }
+          }
         }
       }
       await broadcastPresence(task.conversation_id);
