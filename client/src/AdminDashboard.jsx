@@ -47,10 +47,20 @@ function downloadCsv(filename, headers, rows) {
   URL.revokeObjectURL(url);
 }
 
+function formatDateTime(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" });
+}
+
 export default function AdminDashboard({ myUserId }) {
   const [activeTab, setActiveTab] = useState("tasks");
   const [employees, setEmployees] = useState([]);
   const [usersError, setUsersError] = useState("");
+
+  const [invites, setInvites] = useState([]);
+  const [invitesError, setInvitesError] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
 
   const [tasks, setTasks] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(true);
@@ -75,6 +85,44 @@ export default function AdminDashboard({ myUserId }) {
       .then((data) => setEmployees(data.users))
       .catch(() => {});
   }, []);
+
+  function fetchInvites() {
+    setInvitesError("");
+    authedFetch("admin/invites")
+      .then((data) => setInvites(data.invites))
+      .catch((err) => setInvitesError(err.message));
+  }
+
+  useEffect(fetchInvites, []);
+
+  async function handleAddInvite(e) {
+    e.preventDefault();
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) return;
+    setInviteBusy(true);
+    setInvitesError("");
+    try {
+      await authedFetch("admin/invites", { method: "POST", body: JSON.stringify({ email }) });
+      setInviteEmail("");
+      fetchInvites();
+    } catch (err) {
+      setInvitesError(err.message);
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  async function handleRemoveInvite(email) {
+    setInvitesError("");
+    const previous = invites;
+    setInvites((prev) => prev.filter((i) => i.email !== email));
+    try {
+      await authedFetch(`admin/invites/${encodeURIComponent(email)}`, { method: "DELETE" });
+    } catch (err) {
+      setInvites(previous);
+      setInvitesError(err.message);
+    }
+  }
 
   function fetchTasks() {
     setTasksLoading(true);
@@ -514,6 +562,68 @@ export default function AdminDashboard({ myUserId }) {
 
       {activeTab === "users" && (
       <section className="admin-section">
+        <div className="admin-section-head">
+          <h2>הזמנת משתמשים</h2>
+        </div>
+
+        <p className="empty-hint">
+          רק כתובות אימייל שהוזמנו כאן יוכלו להירשם למערכת.
+        </p>
+
+        <form className="admin-filters" onSubmit={handleAddInvite}>
+          <input
+            type="email"
+            placeholder="כתובת אימייל להזמנה"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            maxLength={200}
+            required
+          />
+          <button type="submit" className="btn btn-primary" disabled={inviteBusy}>
+            {inviteBusy ? "מוסיף…" : "הוספת הזמנה"}
+          </button>
+        </form>
+
+        {invitesError && <div className="join-error">{invitesError}</div>}
+
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>אימייל</th>
+                <th>הוזמן ב-</th>
+                <th>סטטוס</th>
+                <th className="admin-table-actions-col"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {invites.map((inv) => (
+                <tr key={inv.email}>
+                  <td>{inv.email}</td>
+                  <td>{formatDateTime(inv.created_at)}</td>
+                  <td>
+                    {inv.used_at ? (
+                      <span className="pill status-done">נוצל ע"י {inv.used_by_username}</span>
+                    ) : (
+                      <span className="pill status-todo">ממתין</span>
+                    )}
+                  </td>
+                  <td className="admin-task-row-actions">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm btn-danger"
+                      onClick={() => handleRemoveInvite(inv.email)}
+                    >
+                      מחיקה
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {invites.length === 0 && <p className="empty-hint">אין הזמנות</p>}
+        </div>
+
         <div className="admin-section-head">
           <h2>משתמשים</h2>
         </div>

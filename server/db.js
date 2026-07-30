@@ -26,6 +26,18 @@ async function init() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email CITEXT UNIQUE`);
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS team_lead_id INTEGER REFERENCES users(id)`);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS invited_emails (
+      email CITEXT PRIMARY KEY,
+      invited_by CITEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      used_by INTEGER REFERENCES users(id),
+      used_at TIMESTAMPTZ
+    )
+  `);
 
   await query(`
     CREATE TABLE IF NOT EXISTS messages (
@@ -100,16 +112,16 @@ async function init() {
   `);
 }
 
-const ROLES = ["employee", "admin"];
+const ROLES = ["employee", "team_lead", "admin"];
 const TASK_PRIORITIES = ["low", "medium", "high"];
 const TASK_STATUSES = ["todo", "in_progress", "review", "done"];
 
-async function createUser(username, passwordHash) {
+async function createUser(username, passwordHash, email) {
   const { rows: countRows } = await query("SELECT COUNT(*)::int AS count FROM users");
   const role = countRows[0].count === 0 ? "admin" : "employee";
   const { rows } = await query(
-    "INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role",
-    [username, passwordHash, role]
+    "INSERT INTO users (username, password_hash, role, email) VALUES ($1, $2, $3, $4) RETURNING id, username, role, email",
+    [username, passwordHash, role, email ?? null]
   );
   return rows[0];
 }
@@ -122,18 +134,77 @@ async function findUser(username) {
   return rows[0];
 }
 
+async function countUsers() {
+  const { rows } = await query("SELECT COUNT(*)::int AS count FROM users");
+  return rows[0].count;
+}
+
+async function findInvite(email) {
+  const { rows } = await query("SELECT * FROM invited_emails WHERE email = $1", [email]);
+  return rows[0];
+}
+
+async function addInvite(email, invitedBy) {
+  const { rows } = await query(
+    `INSERT INTO invited_emails (email, invited_by) VALUES ($1, $2)
+     ON CONFLICT (email) DO NOTHING
+     RETURNING *`,
+    [email, invitedBy]
+  );
+  return rows[0];
+}
+
+async function listInvites() {
+  const { rows } = await query(
+    `SELECT i.email, i.invited_by, i.created_at, i.used_at, u.username AS used_by_username
+     FROM invited_emails i
+     LEFT JOIN users u ON u.id = i.used_by
+     ORDER BY i.created_at DESC`
+  );
+  return rows;
+}
+
+async function removeInvite(email) {
+  await query("DELETE FROM invited_emails WHERE email = $1", [email]);
+}
+
+async function markInviteUsed(email, userId) {
+  await query("UPDATE invited_emails SET used_by = $1, used_at = now() WHERE email = $2", [userId, email]);
+}
+
 async function findUserById(id) {
-  const { rows } = await query("SELECT id, username, role FROM users WHERE id = $1", [id]);
+  const { rows } = await query(
+    "SELECT id, username, role, team_lead_id FROM users WHERE id = $1",
+    [id]
+  );
   return rows[0];
 }
 
 async function listAllUsers() {
-  const { rows } = await query("SELECT id, username, role FROM users ORDER BY username");
+  const { rows } = await query(
+    `SELECT u.id, u.username, u.role, u.team_lead_id, tl.username AS team_lead_username
+     FROM users u
+     LEFT JOIN users tl ON tl.id = u.team_lead_id
+     ORDER BY u.username`
+  );
+  return rows;
+}
+
+async function listTeamMembers(teamLeadId) {
+  const { rows } = await query(
+    "SELECT id, username, role, team_lead_id FROM users WHERE team_lead_id = $1 OR id = $1 ORDER BY username",
+    [teamLeadId]
+  );
   return rows;
 }
 
 async function updateUserRole(id, role) {
   await query("UPDATE users SET role = $1 WHERE id = $2", [role, id]);
+  return findUserById(id);
+}
+
+async function updateUserTeamLead(id, teamLeadId) {
+  await query("UPDATE users SET team_lead_id = $1 WHERE id = $2", [teamLeadId, id]);
   return findUserById(id);
 }
 
@@ -209,7 +280,7 @@ async function listTasks({ assigned_to, status, priority } = {}) {
   return attachAttachmentsToTasks(rows);
 }
 
-async function listAllTasksForAdmin({ assigned_to, status, priority } = {}) {
+async function listAllTasksForAdmin({ assigned_to, status, priority, assigned_to_in } = {}) {
   const clauses = [];
   const params = [];
   if (assigned_to != null) {
@@ -223,6 +294,10 @@ async function listAllTasksForAdmin({ assigned_to, status, priority } = {}) {
   if (priority) {
     params.push(priority);
     clauses.push(`t.priority = $${params.length}`);
+  }
+  if (assigned_to_in) {
+    params.push(assigned_to_in);
+    clauses.push(`t.assigned_to = ANY($${params.length}::int[])`);
   }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query(
@@ -281,7 +356,7 @@ async function listTimeLogs({ user_id, task_id, open } = {}) {
   return rows;
 }
 
-async function getHoursReport({ from, to, user_id } = {}) {
+async function getHoursReport({ from, to, user_id, user_ids } = {}) {
   const clauses = ["tl.clock_out IS NOT NULL"];
   const params = [];
   if (from) {
@@ -295,6 +370,10 @@ async function getHoursReport({ from, to, user_id } = {}) {
   if (user_id != null) {
     params.push(user_id);
     clauses.push(`tl.user_id = $${params.length}`);
+  }
+  if (user_ids) {
+    params.push(user_ids);
+    clauses.push(`tl.user_id = ANY($${params.length}::int[])`);
   }
   const where = `WHERE ${clauses.join(" AND ")}`;
   const { rows } = await query(
@@ -381,16 +460,18 @@ async function isMember(conversationId, username) {
 
 async function listConversationsForUser(username) {
   const { rows } = await query(
-    `SELECT c.id, c.type, c.name, c.created_at, t.id AS task_id,
-      (SELECT text FROM messages m WHERE m.room = c.id ORDER BY m.id DESC LIMIT 1) AS last_text,
-      (SELECT username FROM messages m WHERE m.room = c.id ORDER BY m.id DESC LIMIT 1) AS last_username,
-      (SELECT created_at FROM messages m WHERE m.room = c.id ORDER BY m.id DESC LIMIT 1) AS last_at,
-      (SELECT id FROM messages m WHERE m.room = c.id ORDER BY m.id DESC LIMIT 1) AS last_id
-     FROM conversations c
-     JOIN conversation_members cm ON cm.conversation_id = c.id
-     LEFT JOIN tasks t ON t.conversation_id = c.id
-     WHERE cm.username = $1
-     ORDER BY COALESCE(last_at, c.created_at) DESC, COALESCE(last_id, 0) DESC`,
+    `SELECT * FROM (
+       SELECT c.id, c.type, c.name, c.created_at, t.id AS task_id,
+         (SELECT text FROM messages m WHERE m.room = c.id ORDER BY m.id DESC LIMIT 1) AS last_text,
+         (SELECT username FROM messages m WHERE m.room = c.id ORDER BY m.id DESC LIMIT 1) AS last_username,
+         (SELECT created_at FROM messages m WHERE m.room = c.id ORDER BY m.id DESC LIMIT 1) AS last_at,
+         (SELECT id FROM messages m WHERE m.room = c.id ORDER BY m.id DESC LIMIT 1) AS last_id
+       FROM conversations c
+       JOIN conversation_members cm ON cm.conversation_id = c.id
+       LEFT JOIN tasks t ON t.conversation_id = c.id
+       WHERE cm.username = $1
+     ) sub
+     ORDER BY COALESCE(sub.last_at, sub.created_at) DESC, COALESCE(sub.last_id, 0) DESC`,
     [username]
   );
   return rows;
@@ -499,7 +580,15 @@ module.exports = {
   findUser,
   findUserById,
   listAllUsers,
+  listTeamMembers,
   updateUserRole,
+  updateUserTeamLead,
+  countUsers,
+  findInvite,
+  addInvite,
+  listInvites,
+  removeInvite,
+  markInviteUsed,
   ROLES,
   listOtherUsers,
   getOrCreateDmConversation,

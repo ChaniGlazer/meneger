@@ -1137,7 +1137,8 @@ body {
 }
 
 .admin-filters select,
-.admin-filters input[type="date"] {
+.admin-filters input[type="date"],
+.admin-filters input[type="email"] {
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid #ddd;
@@ -1394,7 +1395,8 @@ body {
   }
 
   .admin-filters select,
-  .admin-filters input[type="date"] {
+  .admin-filters input[type="date"],
+  .admin-filters input[type="email"] {
     flex: 1;
     min-width: 120px;
   }

@@ -15,7 +15,15 @@ const {
   findUser,
   findUserById,
   listAllUsers,
+  listTeamMembers,
   updateUserRole,
+  updateUserTeamLead,
+  countUsers,
+  findInvite,
+  addInvite,
+  listInvites,
+  removeInvite,
+  markInviteUsed,
   ROLES,
   listOtherUsers,
   getOrCreateDmConversation,
@@ -79,11 +87,14 @@ async function broadcastPresenceForUser(username) {
   }
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 app.post(
   "/api/register",
   ah(async (req, res) => {
     const username = String(req.body?.username || "").trim().slice(0, 30);
     const password = String(req.body?.password || "");
+    const email = String(req.body?.email || "").trim().toLowerCase().slice(0, 200);
 
     if (username.length < 2) {
       return res.status(400).json({ error: "שם המשתמש חייב להכיל לפחות 2 תווים" });
@@ -91,11 +102,30 @@ app.post(
     if (password.length < 6) {
       return res.status(400).json({ error: "הסיסמה חייבת להכיל לפחות 6 תווים" });
     }
+    if (!EMAIL_RE.test(email)) {
+      return res.status(400).json({ error: "יש להזין כתובת אימייל תקינה" });
+    }
     if (await findUser(username)) {
       return res.status(409).json({ error: "שם המשתמש הזה כבר תפוס" });
     }
 
-    const user = await createUser(username, hashPassword(password));
+    // The very first account bootstraps the system as admin and doesn't need
+    // an invite; every account after that must be pre-approved by an admin.
+    const isFirstUser = (await countUsers()) === 0;
+    if (!isFirstUser) {
+      const invite = await findInvite(email);
+      if (!invite) {
+        return res.status(403).json({ error: "כתובת האימייל הזו לא הוזמנה למערכת" });
+      }
+      if (invite.used_by) {
+        return res.status(409).json({ error: "כתובת האימייל הזו כבר נוצלה" });
+      }
+    }
+
+    const user = await createUser(username, hashPassword(password), email);
+    if (!isFirstUser) {
+      await markInviteUsed(email, user.id);
+    }
     const token = createToken();
     sessions.set(token, user.username);
     res.status(201).json({ token, id: user.id, username: user.username, role: user.role });
@@ -132,6 +162,15 @@ const requireAdmin = ah(async (req, res, next) => {
   if (!user || user.role !== "admin") {
     return res.status(403).json({ error: "אין הרשאת מנהל/ת" });
   }
+  next();
+});
+
+const requireTeamLeadOrAdmin = ah(async (req, res, next) => {
+  const user = await findUser(req.username);
+  if (!user || (user.role !== "admin" && user.role !== "team_lead")) {
+    return res.status(403).json({ error: "אין הרשאה" });
+  }
+  req.currentUser = user;
   next();
 });
 
@@ -188,7 +227,7 @@ app.get(
 app.post(
   "/api/groups",
   requireAuth,
-  requireAdmin,
+  requireTeamLeadOrAdmin,
   ah(async (req, res) => {
     const name = String(req.body?.name || "").trim().slice(0, 50);
     const rawMembers = Array.isArray(req.body?.members) ? req.body.members : [];
@@ -607,9 +646,12 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 app.get(
   "/api/admin/users",
   requireAuth,
-  requireAdmin,
-  ah(async (_req, res) => {
-    res.json({ users: await listAllUsers() });
+  requireTeamLeadOrAdmin,
+  ah(async (req, res) => {
+    if (req.currentUser.role === "admin") {
+      return res.json({ users: await listAllUsers() });
+    }
+    res.json({ users: await listTeamMembers(req.currentUser.id) });
   })
 );
 
@@ -624,20 +666,72 @@ app.patch(
       return res.status(404).json({ error: "משתמש/ת לא נמצא/ה" });
     }
 
-    if (req.body?.role === undefined) {
-      return res.json({ user: target });
-    }
-    if (!ROLES.includes(req.body.role)) {
-      return res.status(400).json({ error: `תפקיד לא תקין, חייב להיות אחד מ: ${ROLES.join(", ")}` });
+    if (req.body?.role !== undefined) {
+      if (!ROLES.includes(req.body.role)) {
+        return res
+          .status(400)
+          .json({ error: `תפקיד לא תקין, חייב להיות אחד מ: ${ROLES.join(", ")}` });
+      }
+      const requestingUser = await findUser(req.username);
+      if (requestingUser.id === id && req.body.role !== "admin") {
+        return res.status(400).json({ error: "אי אפשר לשלול הרשאת מנהל/ת מעצמך/ך" });
+      }
+      await updateUserRole(id, req.body.role);
     }
 
-    const requestingUser = await findUser(req.username);
-    if (requestingUser.id === id && req.body.role !== "admin") {
-      return res.status(400).json({ error: "אי אפשר לשלול הרשאת מנהל/ת מעצמך/ך" });
+    if (req.body?.team_lead_id !== undefined) {
+      let teamLeadId = null;
+      if (req.body.team_lead_id !== null && req.body.team_lead_id !== "") {
+        teamLeadId = parseId(req.body.team_lead_id);
+        const lead = teamLeadId !== null && (await findUserById(teamLeadId));
+        if (!lead || lead.role !== "team_lead") {
+          return res.status(400).json({ error: "יש לבחור ראש/ת צוות תקין/ה" });
+        }
+        if (teamLeadId === id) {
+          return res.status(400).json({ error: "אי אפשר להקצות משתמש/ת כראש הצוות של עצמו/ה" });
+        }
+      }
+      await updateUserTeamLead(id, teamLeadId);
     }
 
-    const user = await updateUserRole(id, req.body.role);
-    res.json({ user });
+    res.json({ user: await findUserById(id) });
+  })
+);
+
+app.get(
+  "/api/admin/invites",
+  requireAuth,
+  requireAdmin,
+  ah(async (_req, res) => {
+    res.json({ invites: await listInvites() });
+  })
+);
+
+app.post(
+  "/api/admin/invites",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    const email = String(req.body?.email || "").trim().toLowerCase().slice(0, 200);
+    if (!EMAIL_RE.test(email)) {
+      return res.status(400).json({ error: "יש להזין כתובת אימייל תקינה" });
+    }
+    const invite = await addInvite(email, req.username);
+    if (!invite) {
+      return res.status(409).json({ error: "כתובת האימייל הזו כבר מוזמנת" });
+    }
+    res.status(201).json({ invite });
+  })
+);
+
+app.delete(
+  "/api/admin/invites/:email",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    const email = String(req.params.email || "").trim().toLowerCase();
+    await removeInvite(email);
+    res.json({ ok: true });
   })
 );
 

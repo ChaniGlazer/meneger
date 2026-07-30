@@ -94,6 +94,7 @@ export default function App() {
   const [tasksError, setTasksError] = useState("");
   const [authMode, setAuthMode] = useState("login"); // "login" | "register"
   const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
@@ -376,6 +377,7 @@ export default function App() {
       const data = await api(authMode, {
         username: authName.trim(),
         password: authPassword,
+        ...(authMode === "register" ? { email: authEmail.trim() } : {}),
       });
       localStorage.setItem("chat-token", data.token);
       setUsername(data.username);
@@ -595,6 +597,16 @@ export default function App() {
             onChange={(e) => setAuthName(e.target.value)}
             maxLength={30}
           />
+          {authMode === "register" && (
+            <input
+              type="email"
+              placeholder="כתובת אימייל (שהוזמנה למערכת)"
+              value={authEmail}
+              onChange={(e) => setAuthEmail(e.target.value)}
+              maxLength={200}
+              required
+            />
+          )}
           <input
             type="password"
             placeholder="סיסמה"
