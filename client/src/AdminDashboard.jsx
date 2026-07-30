@@ -46,6 +46,14 @@ function formatDateTime(iso) {
   return new Date(iso).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" });
 }
 
+/** Ends the "table + loading text + empty text" triplication that was
+    repeated four times (tasks, hours, invites, users). */
+function TableStates({ loading, empty, loadingText, emptyText }) {
+  if (loading) return <p className="empty-hint">{loadingText}</p>;
+  if (empty) return <p className="empty-hint">{emptyText}</p>;
+  return null;
+}
+
 export default function AdminDashboard({ myUserId, myRole }) {
   const visibleTabs = ADMIN_TABS.filter((tab) => !tab.adminOnly || myRole === "admin");
   const [activeTab, setActiveTab] = useState("tasks");
@@ -81,7 +89,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
   useEffect(() => {
     authedFetch("admin/users")
       .then((data) => setEmployees(data.users))
-      .catch(() => {});
+      .catch((err) => setUsersError(err.message));
   }, []);
 
   function fetchInvites() {
@@ -289,7 +297,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
   function handleExportHoursCsv() {
     downloadCsv(
       `דוח-שעות_${hoursFrom}_${hoursTo}.csv`,
-      ["עובדת", "סה\"כ שעות", "מספר רישומים"],
+      ["עובדת", "סה״כ שעות", "מספר רישומים"],
       hoursReport.map((r) => [r.username, r.total_hours.toFixed(2), r.entries])
     );
   }
@@ -483,7 +491,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
                   ביטול
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={taskFormSaving}>
-                  {taskFormSaving ? "שומר…" : "שמירה"}
+                  {taskFormSaving ? "בשמירה…" : "שמירה"}
                 </button>
               </div>
             </>
@@ -548,10 +556,12 @@ export default function AdminDashboard({ myUserId, myRole }) {
               ))}
             </tbody>
           </table>
-          {tasksLoading && <p className="empty-hint">טוען משימות…</p>}
-          {!tasksLoading && tasks.length === 0 && (
-            <p className="empty-hint">לא נמצאו משימות התואמות לסינון</p>
-          )}
+          <TableStates
+            loading={tasksLoading}
+            empty={!tasksLoading && tasks.length === 0}
+            loadingText="בטעינת משימות…"
+            emptyText="לא נמצאו משימות התואמות לסינון"
+          />
         </div>
       </section>
       )}
@@ -602,7 +612,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
             <thead>
               <tr>
                 <th>עובדת</th>
-                <th>סה"כ שעות</th>
+                <th>סה״כ שעות</th>
                 <th>מספר רישומים</th>
               </tr>
             </thead>
@@ -616,10 +626,12 @@ export default function AdminDashboard({ myUserId, myRole }) {
               ))}
             </tbody>
           </table>
-          {hoursLoading && <p className="empty-hint">טוען נתונים…</p>}
-          {!hoursLoading && hoursReport.length === 0 && (
-            <p className="empty-hint">אין נתוני נוכחות בטווח שנבחר</p>
-          )}
+          <TableStates
+            loading={hoursLoading}
+            empty={!hoursLoading && hoursReport.length === 0}
+            loadingText="בטעינת נתונים…"
+            emptyText="אין נתוני נוכחות בטווח שנבחר"
+          />
         </div>
       </section>
       )}
@@ -644,10 +656,10 @@ export default function AdminDashboard({ myUserId, myRole }) {
             required
           />
           <button type="submit" className="btn btn-primary" disabled={inviteBusy}>
-            {inviteBusy ? "מוסיף…" : "הוספת הזמנה"}
+            {inviteBusy ? "בהוספה…" : "הוספת הזמנה"}
           </button>
           <label className="btn btn-secondary">
-            {csvBusy ? "מעלה…" : "העלאת רשימה מ-CSV"}
+            {csvBusy ? "בהעלאה…" : "העלאת רשימה מ-CSV"}
             <input type="file" accept=".csv,text/csv" onChange={handleCsvUpload} disabled={csvBusy} hidden />
           </label>
         </form>
@@ -667,7 +679,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
             <thead>
               <tr>
                 <th>אימייל</th>
-                <th>הוזמן ב-</th>
+                <th>הוזמנה ב-</th>
                 <th>סטטוס</th>
                 <th className="admin-table-actions-col"></th>
               </tr>
@@ -679,9 +691,9 @@ export default function AdminDashboard({ myUserId, myRole }) {
                   <td>{formatDateTime(inv.created_at)}</td>
                   <td>
                     {inv.used_at ? (
-                      <span className="pill status-done">נוצל ע"י {inv.used_by_username}</span>
+                      <span className="pill status-done">מומשה ע״י {inv.used_by_username}</span>
                     ) : (
-                      <span className="pill status-todo">ממתין</span>
+                      <span className="pill status-todo">ממתינה</span>
                     )}
                   </td>
                   <td className="admin-task-row-actions">
@@ -697,11 +709,11 @@ export default function AdminDashboard({ myUserId, myRole }) {
               ))}
             </tbody>
           </table>
-          {invites.length === 0 && <p className="empty-hint">אין הזמנות</p>}
+          <TableStates loading={false} empty={invites.length === 0} emptyText="אין הזמנות" />
         </div>
 
         <div className="admin-section-head">
-          <h2>משתמשים</h2>
+          <h2>משתמשות</h2>
         </div>
 
         {usersError && <div className="join-error">{usersError}</div>}
@@ -754,7 +766,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
               ))}
             </tbody>
           </table>
-          {employees.length === 0 && <p className="empty-hint">לא נמצאו משתמשות</p>}
+          <TableStates loading={false} empty={employees.length === 0} emptyText="לא נמצאו משתמשות" />
         </div>
       </section>
       )}
