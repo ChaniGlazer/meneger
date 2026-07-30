@@ -58,12 +58,13 @@ function Ramp({ name, steps }) {
   );
 }
 
-/** Renders one message bubble in its real thread context. */
-function Bubble({ mine, name, time, text, edited, deleted, reactions, editing, attachment }) {
+/** Renders one message bubble in its real thread context. `dm` hides the
+    sender name, matching App.jsx's rule (name shows only in group threads). */
+function Bubble({ mine, name, time, text, edited, deleted, reactions, editing, attachment, dm }) {
   return (
     <div className={`bubble ${mine ? "mine" : "theirs"}${deleted ? " deleted" : ""}`}>
       <div className="bubble-meta">
-        <span className="bubble-name">{name}</span>
+        {!dm && <span className="bubble-name">{name}</span>}
         <span className="bubble-time">
           {time}
           {edited && !deleted && <span className="bubble-edited"> · נערך</span>}
@@ -291,7 +292,34 @@ export default function StyleGuide() {
             time="09:28"
             text={"הודעה ארוכה מאוד שבודקת גלישת שורות ורוחב מקסימלי. ".repeat(6)}
           />
-          <div className="typing-indicator">רבקה מקלידה...</div>
+          <div className="typing-indicator">
+            רבקה מקלידה
+            <span className="typing-dots" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </span>
+          </div>
+        </div>
+
+        <div className="sg-h3">שיחת דו-שיח (השם מוסתר, מוצג רק בקבוצות)</div>
+        <div className="sg-thread">
+          <Bubble dm mine time="09:30" text="הגעת?" />
+          <Bubble dm time="09:31" text="עוד 5 דקות" />
+        </div>
+      </Section>
+
+      <Section title="נוכחות, טוסט ופאנל עליון" note="הנוכחות מקבלת נקודת סטטוס; הטוסט הוא כרטיס צף עם כפתור סגירה, לא באנר בתוך הזרימה.">
+        <div className="sg-h3">נוכחות</div>
+        <div className="sg-row">
+          <span className="presence online">מחוברות כעת: רבקה, שרה</span>
+          <span className="presence">אין משתמשות מחוברות</span>
+        </div>
+
+        <div className="sg-h3">טוסט (ממוקם fixed — כאן מוצג inline להדגמה)</div>
+        <div className="sg-row" style={{ position: "relative", height: 60 }}>
+          <div className="toast" style={{ position: "static" }} role="status">
+            <button type="button" className="toast-body">הודעה חדשה מרבקה: מתי הפגישה?</button>
+            <button type="button" className="toast-close" aria-label="סגירה">✕</button>
+          </div>
         </div>
       </Section>
 

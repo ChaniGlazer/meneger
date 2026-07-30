@@ -38,7 +38,7 @@ function AttachmentView({ attachment }) {
 
   return (
     <a href={attachment.url} download={attachment.originalName} className="attachment-file">
-      <span className="attachment-file-name">{attachment.originalName}</span>
+      <span className="attachment-file-name" dir="auto">{attachment.originalName}</span>
       {attachment.size != null && (
         <span className="attachment-file-size">{formatFileSize(attachment.size)}</span>
       )}
@@ -156,10 +156,32 @@ export default function App() {
   const typingSentRef = useRef(false);
   const typingStopTimerRef = useRef(null);
   const typingExpiryTimersRef = useRef(new Map());
+  const reactionPickerRef = useRef(null);
 
   useEffect(() => {
     activeIdRef.current = active?.id ?? null;
   }, [active]);
+
+  // Close the open reaction picker on outside click or Escape.
+  useEffect(() => {
+    if (reactionPickerFor == null) return;
+
+    function handlePointerDown(e) {
+      if (!reactionPickerRef.current?.contains(e.target)) {
+        setReactionPickerFor(null);
+      }
+    }
+    function handleKeyDown(e) {
+      if (e.key === "Escape") setReactionPickerFor(null);
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [reactionPickerFor]);
 
   useEffect(() => {
     usernameRef.current = username;
@@ -868,7 +890,7 @@ export default function App() {
             )}
             {active?.name}
           </h1>
-          <div className="presence">
+          <div className={`presence${online.length > 0 ? " online" : ""}`}>
             {online.length > 0
               ? `מחוברות כעת: ${online.join(", ")}`
               : "אין משתמשות מחוברות"}
@@ -884,7 +906,7 @@ export default function App() {
           <div className="join-error composer-error">{messageActionError}</div>
         )}
 
-        <main className="messages">
+        <main className="messages" role="log" aria-live="polite">
           {messages.map((m) => (
             <div
               key={m.id}
@@ -893,7 +915,9 @@ export default function App() {
               }`}
             >
               <div className="bubble-meta">
-                <span className="bubble-name">{m.username}</span>
+                {active?.type === "group" && (
+                  <span className="bubble-name">{m.username}</span>
+                )}
                 <span className="bubble-time">
                   {formatTime(m.created_at)}
                   {m.edited_at && !m.deleted_at && (
@@ -929,12 +953,16 @@ export default function App() {
               ) : (
                 <>
                   {m.attachment && <AttachmentView attachment={m.attachment} />}
-                  {m.text && <div className="bubble-text">{m.text}</div>}
+                  {m.text && (
+                    <div className="bubble-text" dir="auto">
+                      {m.text}
+                    </div>
+                  )}
                 </>
               )}
 
               {!m.deleted_at && editingMessageId !== m.id && (
-                <div className="bubble-reactions">
+                <div className="bubble-reactions" ref={m.id === reactionPickerFor ? reactionPickerRef : null}>
                   {groupReactions(m.reactions).map(({ emoji, usernames }) => (
                     <button
                       key={emoji}
@@ -962,6 +990,7 @@ export default function App() {
                         <button
                           key={emoji}
                           type="button"
+                          aria-label={emoji}
                           onClick={() => handleToggleReaction(m.id, emoji)}
                         >
                           {emoji}
@@ -975,11 +1004,19 @@ export default function App() {
               {!m.deleted_at && m.username === username && editingMessageId !== m.id && (
                 <div className="bubble-actions">
                   {m.text && !m.attachment && (
-                    <button type="button" onClick={() => startEditingMessage(m)}>
+                    <button
+                      type="button"
+                      aria-label={`עריכת הודעה מ-${formatTime(m.created_at)}`}
+                      onClick={() => startEditingMessage(m)}
+                    >
                       עריכה
                     </button>
                   )}
-                  <button type="button" onClick={() => handleDeleteMessage(m)}>
+                  <button
+                    type="button"
+                    aria-label={`מחיקת הודעה מ-${formatTime(m.created_at)}`}
+                    onClick={() => handleDeleteMessage(m)}
+                  >
                     מחיקה
                   </button>
                 </div>
@@ -989,8 +1026,13 @@ export default function App() {
           {typingUsers.length > 0 && (
             <div className="typing-indicator">
               {typingUsers.length === 1
-                ? `${typingUsers[0]} מקלידה...`
-                : `${typingUsers.join(", ")} מקלידות...`}
+                ? `${typingUsers[0]} מקלידה`
+                : `${typingUsers.join(", ")} מקלידות`}
+              <span className="typing-dots" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+              </span>
             </div>
           )}
           <div ref={bottomRef} />
@@ -1076,8 +1118,21 @@ export default function App() {
 
         <div className="app-content">
           {toast && (
-            <div className="system-notice toast" onClick={handleToastClick}>
-              הודעה חדשה מ-{toast.username}: {toast.text}
+            <div className="toast" role="status" aria-live="polite">
+              <button type="button" className="toast-body" onClick={handleToastClick}>
+                הודעה חדשה מ-{toast.username}: {toast.text}
+              </button>
+              <button
+                type="button"
+                className="toast-close"
+                aria-label="סגירה"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setToast(null);
+                }}
+              >
+                ✕
+              </button>
             </div>
           )}
           {mainContent}

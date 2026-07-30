@@ -400,10 +400,64 @@ button, input, select, textarea {
   padding: var(--space-1) var(--space-3);
 }
 
-/* Transient notification. Positioning/animation land with the chat stage;
-   for now it at least stops reading as an amber warning. */
+/* Transient notification: a real floating, dismissible toast (was previously
+   an in-flow div sharing .system-notice's amber look). */
 .toast {
+  position: fixed;
+  top: calc(var(--topbar-h) + var(--space-4));
+  inset-inline-end: var(--space-5);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 360px;
+  background: var(--bg-surface);
+  color: var(--fg-default);
+  border: 1px solid var(--border-subtle);
+  border-inline-start: 3px solid var(--brand);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  animation: toast-in var(--dur-base) var(--ease-spring);
+}
+
+@keyframes toast-in {
+  from { transform: translateY(-8px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+.toast-body {
+  flex: 1;
+  min-width: 0;
+  text-align: start;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--text-sm);
+  color: inherit;
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast-close {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+  line-height: 1;
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition: background-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+
+.toast-close:hover {
+  background: var(--bg-surface-hover);
+  color: var(--fg-default);
 }
 
 /* ============================================================================
@@ -705,10 +759,26 @@ button, input, select, textarea {
 }
 
 .presence {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   font-size: var(--text-xs);
   color: var(--fg-muted);
   text-align: end;
   white-space: nowrap;
+}
+
+.presence::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--fg-disabled);
+  flex-shrink: 0;
+}
+
+.presence.online::before {
+  background: var(--success);
 }
 
 /* ============================================================================
@@ -836,7 +906,9 @@ button, input, select, textarea {
 }
 
 .bubble {
-  max-width: 70%;
+  /* both a % cap (so it never spans the whole thread) and a ch cap (so long
+     lines don't outrun a comfortable reading measure on a wide window) */
+  max-width: min(70%, 62ch);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-lg);
   background: var(--bubble-theirs-bg);
@@ -845,6 +917,8 @@ button, input, select, textarea {
   color: var(--fg-default);
 }
 
+/* asymmetric corner as the ownership cue, tied to the visual side each
+   bubble renders on (not to text direction) */
 .bubble.mine {
   align-self: flex-start;   /* under RTL this is the right edge — unchanged on purpose */
   background: var(--bubble-mine-bg);
@@ -852,12 +926,14 @@ button, input, select, textarea {
      1.02:1 of each other and differ only in hue. */
   border-color: var(--bubble-mine-border);
   color: var(--fg-default);
+  border-bottom-right-radius: var(--radius-xs);
 }
 
 .bubble.theirs {
   align-self: flex-end;
   background: var(--bubble-theirs-bg);
   color: var(--fg-default);
+  border-bottom-left-radius: var(--radius-xs);
 }
 
 .bubble-meta {
@@ -878,6 +954,10 @@ button, input, select, textarea {
 .bubble-time {
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+  /* keeps time at the trailing corner even in a DM, where .bubble-name is
+     omitted and it would otherwise be the only (and therefore start-aligned)
+     flex child */
+  margin-inline-start: auto;
 }
 
 .bubble-text {
@@ -1042,10 +1122,33 @@ button, input, select, textarea {
 }
 
 .typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   font-size: var(--text-xs);
   color: var(--fg-muted);
-  font-style: italic;
   padding: 0 var(--space-1);
+}
+
+.typing-dots {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.typing-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--fg-subtle);
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+
+.typing-dots span:nth-child(2) { animation-delay: .15s; }
+.typing-dots span:nth-child(3) { animation-delay: .3s; }
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: .5; }
+  30% { transform: translateY(-3px); opacity: 1; }
 }
 
 /* ============================================================================
