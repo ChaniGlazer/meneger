@@ -46,6 +46,18 @@ function formatDateTime(iso) {
   return new Date(iso).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" });
 }
 
+function formatTimeOnly(iso) {
+  return new Date(iso).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatDuration(clockIn, clockOut) {
+  if (!clockOut) return "פתוחה";
+  const hours = (new Date(clockOut) - new Date(clockIn)) / 3600000;
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  return `${h}:${String(m).padStart(2, "0")}`;
+}
+
 /** Ends the "table + loading text + empty text" triplication that was
     repeated four times (tasks, hours, invites, users). */
 function TableStates({ loading, empty, loadingText, emptyText }) {
@@ -85,6 +97,15 @@ export default function AdminDashboard({ myUserId, myRole }) {
   const [hoursReport, setHoursReport] = useState([]);
   const [hoursLoading, setHoursLoading] = useState(true);
   const [hoursError, setHoursError] = useState("");
+
+  const [timeLogEntries, setTimeLogEntries] = useState([]);
+  const [timeLogEntriesLoading, setTimeLogEntriesLoading] = useState(false);
+  const [timeLogEntriesError, setTimeLogEntriesError] = useState("");
+  const [editingTimeLog, setEditingTimeLog] = useState(null); // null closed, "new", or a log object
+  const [timeLogForm, setTimeLogForm] = useState(null);
+  const [timeLogFormError, setTimeLogFormError] = useState("");
+  const [timeLogFormSaving, setTimeLogFormSaving] = useState(false);
+  const [confirmDeleteTimeLog, setConfirmDeleteTimeLog] = useState(null);
 
   useEffect(() => {
     authedFetch("admin/users")
@@ -293,6 +314,115 @@ export default function AdminDashboard({ myUserId, myRole }) {
     fetchHoursReport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function fetchTimeLogEntries() {
+    if (!hoursUserId) {
+      setTimeLogEntries([]);
+      return;
+    }
+    setTimeLogEntriesLoading(true);
+    setTimeLogEntriesError("");
+    const params = new URLSearchParams({ user_id: hoursUserId });
+    if (hoursFrom) params.set("from", hoursFrom);
+    if (hoursTo) params.set("to", hoursTo);
+    authedFetch(`time-logs?${params.toString()}`)
+      .then((data) => setTimeLogEntries(data.timeLogs))
+      .catch((err) => setTimeLogEntriesError(err.message))
+      .finally(() => setTimeLogEntriesLoading(false));
+  }
+
+  useEffect(() => {
+    fetchTimeLogEntries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hoursUserId]);
+
+  function openNewTimeLogForm() {
+    setTimeLogFormError("");
+    setEditingTimeLog("new");
+    setTimeLogForm({ clock_in_date: todayIso(), clock_in_time: "09:00", clock_out_time: "17:00" });
+  }
+
+  function openEditTimeLogForm(log) {
+    setTimeLogFormError("");
+    setEditingTimeLog(log);
+    const clockIn = new Date(log.clock_in);
+    const clockOut = log.clock_out ? new Date(log.clock_out) : null;
+    setTimeLogForm({
+      clock_in_date: clockIn.toISOString().slice(0, 10),
+      clock_in_time: clockIn.toTimeString().slice(0, 5),
+      clock_out_time: clockOut ? clockOut.toTimeString().slice(0, 5) : "",
+    });
+  }
+
+  function closeTimeLogForm() {
+    setEditingTimeLog(null);
+    setTimeLogForm(null);
+    setTimeLogFormError("");
+  }
+
+  async function handleSaveTimeLog(e) {
+    e.preventDefault();
+    if (!timeLogForm) return;
+    setTimeLogFormSaving(true);
+    setTimeLogFormError("");
+
+    const clockIn = new Date(`${timeLogForm.clock_in_date}T${timeLogForm.clock_in_time}`);
+    const clockOut = timeLogForm.clock_out_time
+      ? new Date(`${timeLogForm.clock_in_date}T${timeLogForm.clock_out_time}`)
+      : null;
+    if (clockOut && clockOut <= clockIn) {
+      setTimeLogFormError("שעת היציאה חייבת להיות אחרי שעת הכניסה");
+      setTimeLogFormSaving(false);
+      return;
+    }
+
+    try {
+      if (editingTimeLog === "new") {
+        await authedFetch("time-logs", {
+          method: "POST",
+          body: JSON.stringify({
+            user_id: hoursUserId,
+            clock_in: clockIn.toISOString(),
+            clock_out: clockOut ? clockOut.toISOString() : null,
+          }),
+        });
+      } else {
+        await authedFetch(`time-logs/${editingTimeLog.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            clock_in: clockIn.toISOString(),
+            clock_out: clockOut ? clockOut.toISOString() : null,
+          }),
+        });
+      }
+      closeTimeLogForm();
+      fetchTimeLogEntries();
+      fetchHoursReport();
+    } catch (err) {
+      setTimeLogFormError(err.message);
+    } finally {
+      setTimeLogFormSaving(false);
+    }
+  }
+
+  function handleDeleteTimeLog(log) {
+    setConfirmDeleteTimeLog(log);
+  }
+
+  async function confirmDeleteTimeLogNow() {
+    const log = confirmDeleteTimeLog;
+    setConfirmDeleteTimeLog(null);
+    setTimeLogEntriesError("");
+    const previous = timeLogEntries;
+    setTimeLogEntries((prev) => prev.filter((l) => l.id !== log.id));
+    try {
+      await authedFetch(`time-logs/${log.id}`, { method: "DELETE" });
+      fetchHoursReport();
+    } catch (err) {
+      setTimeLogEntries(previous);
+      setTimeLogEntriesError(err.message);
+    }
+  }
 
   function handleExportHoursCsv() {
     downloadCsv(
@@ -592,7 +722,14 @@ export default function AdminDashboard({ myUserId, myRole }) {
               </option>
             ))}
           </select>
-          <button type="button" className="btn btn-secondary" onClick={fetchHoursReport}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              fetchHoursReport();
+              fetchTimeLogEntries();
+            }}
+          >
             הצג
           </button>
           <button
@@ -633,6 +770,121 @@ export default function AdminDashboard({ myUserId, myRole }) {
             emptyText="אין נתוני נוכחות בטווח שנבחר"
           />
         </div>
+
+        {hoursUserId && (
+          <>
+            <div className="admin-section-head">
+              <h2>רשומות נוכחות — {employees.find((e) => String(e.id) === hoursUserId)?.username}</h2>
+              <button type="button" className="btn btn-primary btn-sm" onClick={openNewTimeLogForm}>
+                <span aria-hidden="true">+</span> רשומה חדשה
+              </button>
+            </div>
+
+            {timeLogEntriesError && <div className="join-error">{timeLogEntriesError}</div>}
+
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>תאריך</th>
+                    <th>כניסה</th>
+                    <th>יציאה</th>
+                    <th>משך</th>
+                    <th className="admin-table-actions-col"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {timeLogEntries.map((log) => (
+                    <tr key={log.id}>
+                      <td>{new Date(log.clock_in).toLocaleDateString("he-IL")}</td>
+                      <td>{formatTimeOnly(log.clock_in)}</td>
+                      <td>{log.clock_out ? formatTimeOnly(log.clock_out) : <span className="admin-cell-muted">פתוחה</span>}</td>
+                      <td>{formatDuration(log.clock_in, log.clock_out)}</td>
+                      <td className="admin-task-row-actions">
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditTimeLogForm(log)}>
+                          עריכה
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm btn-danger"
+                          onClick={() => handleDeleteTimeLog(log)}
+                        >
+                          מחיקה
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <TableStates
+                loading={timeLogEntriesLoading}
+                empty={!timeLogEntriesLoading && timeLogEntries.length === 0}
+                loadingText="בטעינת רשומות…"
+                emptyText="אין רשומות נוכחות בטווח שנבחר"
+              />
+            </div>
+          </>
+        )}
+
+        <Modal
+          open={Boolean(editingTimeLog && timeLogForm)}
+          onClose={closeTimeLogForm}
+          onSubmit={handleSaveTimeLog}
+          title={editingTimeLog === "new" ? "רשומת נוכחות חדשה" : "עריכת רשומת נוכחות"}
+        >
+          {timeLogForm && (
+            <>
+              {timeLogFormError && <div className="join-error">{timeLogFormError}</div>}
+              <label>
+                תאריך
+                <input
+                  type="date"
+                  value={timeLogForm.clock_in_date}
+                  onChange={(e) => setTimeLogForm((f) => ({ ...f, clock_in_date: e.target.value }))}
+                  required
+                  disabled={editingTimeLog !== "new"}
+                />
+              </label>
+              <div className="admin-modal-row">
+                <label>
+                  שעת כניסה
+                  <input
+                    type="time"
+                    value={timeLogForm.clock_in_time}
+                    onChange={(e) => setTimeLogForm((f) => ({ ...f, clock_in_time: e.target.value }))}
+                    required
+                  />
+                </label>
+                <label>
+                  שעת יציאה
+                  <input
+                    type="time"
+                    value={timeLogForm.clock_out_time}
+                    onChange={(e) => setTimeLogForm((f) => ({ ...f, clock_out_time: e.target.value }))}
+                  />
+                </label>
+              </div>
+              <div className="admin-modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={closeTimeLogForm} disabled={timeLogFormSaving}>
+                  ביטול
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={timeLogFormSaving}>
+                  {timeLogFormSaving ? "בשמירה…" : "שמירה"}
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
+
+        <ConfirmDialog
+          open={confirmDeleteTimeLog != null}
+          title="מחיקת רשומת נוכחות"
+          message="למחוק את הרשומה הזו? הפעולה אינה הפיכה."
+          confirmLabel="מחיקה"
+          danger
+          onConfirm={confirmDeleteTimeLogNow}
+          onCancel={() => setConfirmDeleteTimeLog(null)}
+        />
       </section>
       )}
 

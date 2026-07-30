@@ -401,7 +401,7 @@ async function getTimeLogById(id) {
   return rows[0];
 }
 
-async function listTimeLogs({ user_id, task_id, open } = {}) {
+async function listTimeLogs({ user_id, task_id, open, from, to } = {}) {
   const clauses = [];
   const params = [];
   if (user_id != null) {
@@ -415,9 +415,21 @@ async function listTimeLogs({ user_id, task_id, open } = {}) {
   if (open) {
     clauses.push("clock_out IS NULL");
   }
+  if (from) {
+    params.push(from);
+    clauses.push(`clock_in >= $${params.length}`);
+  }
+  if (to) {
+    params.push(to);
+    clauses.push(`clock_in <= $${params.length}`);
+  }
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query(`SELECT * FROM time_logs ${where} ORDER BY id DESC`, params);
   return rows;
+}
+
+async function deleteTimeLog(id) {
+  await query("DELETE FROM time_logs WHERE id = $1", [id]);
 }
 
 async function getHoursReport({ from, to, user_id, user_ids } = {}) {
@@ -745,5 +757,6 @@ module.exports = {
   getTimeLogById,
   listTimeLogs,
   updateTimeLog,
+  deleteTimeLog,
   getHoursReport,
 };

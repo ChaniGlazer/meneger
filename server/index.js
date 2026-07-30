@@ -50,6 +50,7 @@ const {
   getTimeLogById,
   listTimeLogs,
   updateTimeLog,
+  deleteTimeLog,
   getHoursReport,
 } = require("./db");
 const { hashPassword, verifyPassword, createToken } = require("./auth");
@@ -656,10 +657,16 @@ app.post(
 
     let userId = currentUser.id;
     if (req.body?.user_id != null && req.body.user_id !== "") {
-      userId = parseId(req.body.user_id);
-      if (userId === null || !(await findUserById(userId))) {
+      const requestedId = parseId(req.body.user_id);
+      if (requestedId === null || !(await findUserById(requestedId))) {
         return res.status(400).json({ error: "משתמשת לא קיימת" });
       }
+      // Anyone can clock themself in; creating a record for someone else is
+      // an admin-only action (previously anyone could log hours for anyone).
+      if (requestedId !== currentUser.id && currentUser.role !== "admin") {
+        return res.status(403).json({ error: "אין הרשאת מנהלת" });
+      }
+      userId = requestedId;
     }
 
     const clockIn = req.body?.clock_in ? String(req.body.clock_in) : new Date().toISOString();
@@ -682,14 +689,32 @@ app.get(
   "/api/time-logs",
   requireAuth,
   ah(async (req, res) => {
+    const currentUser = await findUser(req.username);
     const filters = {};
+
     if (req.query.user_id != null) {
       const userId = parseId(req.query.user_id);
       if (userId === null) {
         return res.status(400).json({ error: "user_id לא תקין" });
       }
+      // Seeing someone else's clock records is an admin-only action
+      // (previously anyone could query any user_id and see their records -
+      // this also meant the time clock could show a DIFFERENT employee's
+      // open shift as if it were your own, since no filter was applied by
+      // default and this endpoint just returned the newest match).
+      if (userId !== currentUser.id && currentUser.role !== "admin") {
+        return res.status(403).json({ error: "אין הרשאת מנהלת" });
+      }
       filters.user_id = userId;
+    } else {
+      // No user_id given -> "my own records" for EVERYONE, admins included.
+      // An admin viewing someone else's timesheet always passes that
+      // person's id explicitly (e.g. from the admin dashboard's employee
+      // picker); this is what makes the personal time-clock widget (which
+      // never passes user_id) correct for admins too.
+      filters.user_id = currentUser.id;
     }
+
     if (req.query.task_id != null) {
       const taskId = parseId(req.query.task_id);
       if (taskId === null) {
@@ -699,6 +724,18 @@ app.get(
     }
     if (req.query.open === "true") {
       filters.open = true;
+    }
+    if (req.query.from) {
+      if (!DATE_RE.test(req.query.from)) {
+        return res.status(400).json({ error: "תאריך התחלה לא תקין" });
+      }
+      filters.from = `${req.query.from}T00:00:00.000Z`;
+    }
+    if (req.query.to) {
+      if (!DATE_RE.test(req.query.to)) {
+        return res.status(400).json({ error: "תאריך סיום לא תקין" });
+      }
+      filters.to = `${req.query.to}T23:59:59.999Z`;
     }
     res.json({ timeLogs: await listTimeLogs(filters) });
   })
@@ -711,6 +748,11 @@ app.get(
     const id = parseId(req.params.id);
     const timeLog = id !== null && (await getTimeLogById(id));
     if (!timeLog) return res.status(404).json({ error: "רשומת השעון לא נמצאה" });
+
+    const currentUser = await findUser(req.username);
+    if (timeLog.user_id !== currentUser.id && currentUser.role !== "admin") {
+      return res.status(403).json({ error: "אין הרשאת מנהלת" });
+    }
     res.json({ timeLog });
   })
 );
@@ -722,6 +764,19 @@ app.patch(
     const id = parseId(req.params.id);
     const existing = id !== null && (await getTimeLogById(id));
     if (!existing) return res.status(404).json({ error: "רשומת השעון לא נמצאה" });
+
+    const currentUser = await findUser(req.username);
+    const isAdmin = currentUser.role === "admin";
+    const isOwner = existing.user_id === currentUser.id;
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ error: "אין הרשאה לערוך רשומה זו" });
+    }
+    // Only an admin may move a record to a different clock-in time or
+    // reassign it to someone else; an employee may only close her own open
+    // shift (clock_out) or tag it with a task.
+    if (!isAdmin && (req.body?.clock_in !== undefined || req.body?.user_id !== undefined)) {
+      return res.status(403).json({ error: "אין הרשאת מנהלת" });
+    }
 
     const fields = {};
 
@@ -752,6 +807,19 @@ app.patch(
 
     const timeLog = await updateTimeLog(id, fields);
     res.json({ timeLog });
+  })
+);
+
+app.delete(
+  "/api/time-logs/:id",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    const id = parseId(req.params.id);
+    const existing = id !== null && (await getTimeLogById(id));
+    if (!existing) return res.status(404).json({ error: "רשומת השעון לא נמצאה" });
+    await deleteTimeLog(id);
+    res.json({ ok: true });
   })
 );
 
