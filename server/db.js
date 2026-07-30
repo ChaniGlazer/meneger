@@ -56,6 +56,16 @@ async function init() {
   `);
 
   await query(`
+    CREATE TABLE IF NOT EXISTS message_reactions (
+      message_id INTEGER NOT NULL REFERENCES messages(id),
+      username CITEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (message_id, username, emoji)
+    )
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS tasks (
       id SERIAL PRIMARY KEY,
       title TEXT NOT NULL,
@@ -571,7 +581,58 @@ function rowToMessage(row) {
             url: getPublicUrl(row.attachment_filename),
           }
         : null,
+    reactions: row.reactions || [],
   };
+}
+
+async function attachReactionsToMessages(messages) {
+  if (messages.length === 0) return messages;
+  const ids = [...new Set(messages.map((m) => m.id))];
+  const { rows } = await query(
+    "SELECT message_id, username, emoji FROM message_reactions WHERE message_id = ANY($1::int[])",
+    [ids]
+  );
+  const byMessage = new Map();
+  for (const row of rows) {
+    if (!byMessage.has(row.message_id)) byMessage.set(row.message_id, []);
+    byMessage.get(row.message_id).push({ username: row.username, emoji: row.emoji });
+  }
+  return messages.map((m) => ({ ...m, reactions: byMessage.get(m.id) || [] }));
+}
+
+async function getMessageReactions(messageId) {
+  const { rows } = await query(
+    "SELECT username, emoji FROM message_reactions WHERE message_id = $1",
+    [messageId]
+  );
+  return rows;
+}
+
+async function getMessageRoom(messageId) {
+  const { rows } = await query(
+    "SELECT room FROM messages WHERE id = $1 AND deleted_at IS NULL",
+    [messageId]
+  );
+  return rows[0]?.room;
+}
+
+async function toggleReaction(messageId, username, emoji) {
+  const { rows } = await query(
+    "SELECT 1 FROM message_reactions WHERE message_id = $1 AND username = $2 AND emoji = $3",
+    [messageId, username, emoji]
+  );
+  if (rows.length > 0) {
+    await query(
+      "DELETE FROM message_reactions WHERE message_id = $1 AND username = $2 AND emoji = $3",
+      [messageId, username, emoji]
+    );
+  } else {
+    await query(
+      "INSERT INTO message_reactions (message_id, username, emoji) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+      [messageId, username, emoji]
+    );
+  }
+  return getMessageReactions(messageId);
 }
 
 async function saveMessage(room, username, text, attachment) {
@@ -611,7 +672,8 @@ async function getHistory(room, limit = 100) {
      FROM messages WHERE room = $1 ORDER BY id DESC LIMIT $2`,
     [room, limit]
   );
-  return rows.reverse().map(rowToMessage);
+  const messages = await attachReactionsToMessages(rows);
+  return messages.reverse().map(rowToMessage);
 }
 
 async function updateMessage(id, username, text) {
@@ -621,7 +683,9 @@ async function updateMessage(id, username, text) {
      RETURNING *`,
     [text, id, username]
   );
-  return rows[0] ? rowToMessage(rows[0]) : null;
+  if (!rows[0]) return null;
+  rows[0].reactions = await getMessageReactions(id);
+  return rowToMessage(rows[0]);
 }
 
 async function deleteMessage(id, username) {
@@ -642,6 +706,8 @@ module.exports = {
   getHistory,
   updateMessage,
   deleteMessage,
+  toggleReaction,
+  getMessageRoom,
   createUser,
   findUser,
   updateUserPassword,

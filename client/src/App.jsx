@@ -81,6 +81,17 @@ const TASK_STATUS_COLUMNS = [
 
 const TASK_PRIORITY_LABELS = { low: "נמוכה", medium: "בינונית", high: "גבוהה" };
 
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+function groupReactions(reactions) {
+  const map = new Map();
+  for (const r of reactions || []) {
+    if (!map.has(r.emoji)) map.set(r.emoji, []);
+    map.get(r.emoji).push(r.username);
+  }
+  return [...map.entries()].map(([emoji, usernames]) => ({ emoji, usernames }));
+}
+
 export default function App() {
   // "auth" | "inbox" | "chat" | "tasks" | "admin"
   const [stage, setStage] = useState("auth");
@@ -136,6 +147,7 @@ export default function App() {
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editingText, setEditingText] = useState("");
   const [messageActionError, setMessageActionError] = useState("");
+  const [reactionPickerFor, setReactionPickerFor] = useState(null);
 
   const bottomRef = useRef(null);
   const activeIdRef = useRef(null);
@@ -364,6 +376,10 @@ export default function App() {
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? msg : m)));
     });
 
+    socket.on("message-reactions", ({ id, reactions } = {}) => {
+      setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, reactions } : m)));
+    });
+
     socket.on("edit-error", (message) => setMessageActionError(message));
     socket.on("delete-error", (message) => setMessageActionError(message));
 
@@ -389,6 +405,7 @@ export default function App() {
       socket.off("typing");
       socket.off("message-edited");
       socket.off("message-deleted");
+      socket.off("message-reactions");
       socket.off("edit-error");
       socket.off("delete-error");
       socket.off("added-to-conversation");
@@ -646,6 +663,11 @@ export default function App() {
     if (!window.confirm("למחוק את ההודעה?")) return;
     setMessageActionError("");
     socket.emit("delete-message", { id: msg.id });
+  }
+
+  function handleToggleReaction(messageId, emoji) {
+    socket.emit("toggle-reaction", { id: messageId, emoji });
+    setReactionPickerFor(null);
   }
 
   function handleLogout() {
@@ -911,6 +933,45 @@ export default function App() {
                 </>
               )}
 
+              {!m.deleted_at && editingMessageId !== m.id && (
+                <div className="bubble-reactions">
+                  {groupReactions(m.reactions).map(({ emoji, usernames }) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className={`reaction-chip${usernames.includes(username) ? " mine" : ""}`}
+                      title={usernames.join(", ")}
+                      onClick={() => handleToggleReaction(m.id, emoji)}
+                    >
+                      {emoji} {usernames.length}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="reaction-add"
+                    aria-label="הוספת ריאקציה"
+                    onClick={() =>
+                      setReactionPickerFor((prev) => (prev === m.id ? null : m.id))
+                    }
+                  >
+                    😊+
+                  </button>
+                  {reactionPickerFor === m.id && (
+                    <div className="reaction-picker">
+                      {REACTION_EMOJIS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => handleToggleReaction(m.id, emoji)}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {!m.deleted_at && m.username === username && editingMessageId !== m.id && (
                 <div className="bubble-actions">
                   {m.text && !m.attachment && (
@@ -957,7 +1018,7 @@ export default function App() {
             />
           </label>
           <textarea
-            placeholder="הקלידי הודעה... (Shift+Enter לירידת שורה)"
+            placeholder="הקלידי הודעה..."
             value={draft}
             onChange={(e) => handleDraftChange(e.target.value)}
             onKeyDown={(e) => {

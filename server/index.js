@@ -11,6 +11,8 @@ const {
   getHistory,
   updateMessage,
   deleteMessage,
+  toggleReaction,
+  getMessageRoom,
   createUser,
   findUser,
   updateUserPassword,
@@ -1118,6 +1120,23 @@ io.on(
           return;
         }
         io.to(deleted.room).emit("message-deleted", deleted);
+      })
+    );
+
+    socket.on(
+      "toggle-reaction",
+      sh(async ({ id, emoji } = {}) => {
+        const client = clients.get(socket.id);
+        if (!client) return;
+        const messageId = Number(id);
+        const cleanEmoji = String(emoji || "").trim().slice(0, 8);
+        if (!Number.isInteger(messageId) || !cleanEmoji) return;
+
+        const room = await getMessageRoom(messageId);
+        if (!room || !(await isMember(room, client.username))) return;
+
+        const reactions = await toggleReaction(messageId, client.username, cleanEmoji);
+        io.to(room).emit("message-reactions", { id: messageId, reactions });
       })
     );
 
