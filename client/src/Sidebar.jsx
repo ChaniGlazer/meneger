@@ -31,7 +31,7 @@ export default function Sidebar({
         <div>
           <div className="sidebar-username">{username}</div>
           <div className="sidebar-role-badge">
-            {myRole === "admin" ? "מנהל/ת" : myRole === "team_lead" ? "ראש/ת צוות" : "עובד/ת"}
+            {myRole === "admin" ? "מנהלת" : myRole === "team_lead" ? "ראשת צוות" : "עובדת"}
           </div>
         </div>
       </div>

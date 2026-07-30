@@ -126,6 +126,10 @@ async function createUser(username, passwordHash, email) {
   return rows[0];
 }
 
+async function updateUserPassword(username, passwordHash) {
+  await query("UPDATE users SET password_hash = $1 WHERE username = $2", [passwordHash, username]);
+}
+
 async function findUser(username) {
   const { rows } = await query(
     "SELECT id, username, password_hash, role FROM users WHERE username = $1",
@@ -435,6 +439,11 @@ async function createGroupConversation(name, usernames) {
   return id;
 }
 
+async function getConversationById(id) {
+  const { rows } = await query("SELECT id, type, name, created_at FROM conversations WHERE id = $1", [id]);
+  return rows[0];
+}
+
 async function getConversationMembers(conversationId) {
   const { rows } = await query(
     "SELECT username FROM conversation_members WHERE conversation_id = $1",
@@ -446,6 +455,13 @@ async function getConversationMembers(conversationId) {
 async function addConversationMember(conversationId, username) {
   await query(
     "INSERT INTO conversation_members (conversation_id, username) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    [conversationId, username]
+  );
+}
+
+async function removeConversationMember(conversationId, username) {
+  await query(
+    "DELETE FROM conversation_members WHERE conversation_id = $1 AND username = $2",
     [conversationId, username]
   );
 }
@@ -578,6 +594,7 @@ module.exports = {
   deleteMessage,
   createUser,
   findUser,
+  updateUserPassword,
   findUserById,
   listAllUsers,
   listTeamMembers,
@@ -593,8 +610,10 @@ module.exports = {
   listOtherUsers,
   getOrCreateDmConversation,
   createGroupConversation,
+  getConversationById,
   getConversationMembers,
   addConversationMember,
+  removeConversationMember,
   isMember,
   listConversationsForUser,
   TASK_PRIORITIES,

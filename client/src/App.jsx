@@ -111,6 +111,12 @@ export default function App() {
   const [selectedMembers, setSelectedMembers] = useState(new Set());
   const [formError, setFormError] = useState("");
 
+  const [showManageGroup, setShowManageGroup] = useState(false);
+  const [groupMembers, setGroupMembers] = useState([]);
+  const [addMemberName, setAddMemberName] = useState("");
+  const [manageGroupBusy, setManageGroupBusy] = useState(false);
+  const [manageGroupError, setManageGroupError] = useState("");
+
   const [active, setActive] = useState(null); // { id, type, name }
   const [messages, setMessages] = useState([]);
   const [online, setOnline] = useState([]);
@@ -142,7 +148,7 @@ export default function App() {
 
   useEffect(() => {
     const total = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
-    document.title = total > 0 ? `(${total}) מערכת ניהול עובדים` : "מערכת ניהול עובדים";
+    document.title = total > 0 ? `(${total}) מערכת ניהול עובדות` : "מערכת ניהול עובדות";
   }, [unreadCounts]);
 
   useEffect(() => {
@@ -354,6 +360,18 @@ export default function App() {
     socket.on("edit-error", (message) => setMessageActionError(message));
     socket.on("delete-error", (message) => setMessageActionError(message));
 
+    socket.on("added-to-conversation", () => {
+      fetchConversations();
+    });
+
+    socket.on("removed-from-conversation", ({ id } = {}) => {
+      fetchConversations();
+      if (id === activeIdRef.current) {
+        window.alert("הוסרת מהקבוצה הזו");
+        enterInbox();
+      }
+    });
+
     return () => {
       socket.off("auth-error");
       socket.off("open-error");
@@ -366,6 +384,8 @@ export default function App() {
       socket.off("message-deleted");
       socket.off("edit-error");
       socket.off("delete-error");
+      socket.off("added-to-conversation");
+      socket.off("removed-from-conversation");
     };
   }, []);
 
@@ -438,7 +458,7 @@ export default function App() {
     setFormError("");
     const cleanName = groupName.trim();
     if (!cleanName) return setFormError("יש להזין שם לקבוצה");
-    if (selectedMembers.size < 1) return setFormError("יש לבחור לפחות משתתף אחד נוסף");
+    if (selectedMembers.size < 1) return setFormError("יש לבחור לפחות משתתפת אחת נוספת");
 
     try {
       const data = await authedFetch("groups", {
@@ -451,6 +471,57 @@ export default function App() {
       openConversation({ id: data.id, type: "group", name: data.name });
     } catch (err) {
       setFormError(err.message);
+    }
+  }
+
+  function openManageGroup() {
+    if (!active?.id) return;
+    setManageGroupError("");
+    setAddMemberName("");
+    setShowManageGroup(true);
+    authedFetch(`conversations/${active.id}/members`)
+      .then((data) => setGroupMembers(data.members))
+      .catch((err) => setManageGroupError(err.message));
+  }
+
+  function closeManageGroup() {
+    setShowManageGroup(false);
+    setGroupMembers([]);
+  }
+
+  async function handleAddGroupMember(e) {
+    e.preventDefault();
+    const clean = addMemberName.trim();
+    if (!clean || !active?.id) return;
+    setManageGroupBusy(true);
+    setManageGroupError("");
+    try {
+      const data = await authedFetch(`conversations/${active.id}/members`, {
+        method: "POST",
+        body: JSON.stringify({ username: clean }),
+      });
+      setGroupMembers(data.members);
+      setAddMemberName("");
+    } catch (err) {
+      setManageGroupError(err.message);
+    } finally {
+      setManageGroupBusy(false);
+    }
+  }
+
+  async function handleRemoveGroupMember(member) {
+    if (!active?.id) return;
+    setManageGroupBusy(true);
+    setManageGroupError("");
+    try {
+      const data = await authedFetch(`conversations/${active.id}/members/${encodeURIComponent(member)}`, {
+        method: "DELETE",
+      });
+      setGroupMembers(data.members);
+    } catch (err) {
+      setManageGroupError(err.message);
+    } finally {
+      setManageGroupBusy(false);
     }
   }
 
@@ -565,7 +636,7 @@ export default function App() {
     return (
       <div className="screen">
         <form className="join-card" onSubmit={handleAuthSubmit}>
-          <h1>מערכת ניהול עובדים</h1>
+          <h1>מערכת ניהול עובדות</h1>
           <p className="join-card-subtitle">משימות, נוכחות ותקשורת צוותית במקום אחד</p>
           <div className="auth-tabs">
             <button
@@ -592,7 +663,7 @@ export default function App() {
           <input
             autoFocus
             type="text"
-            placeholder="שם משתמש"
+            placeholder="שם משתמשת"
             value={authName}
             onChange={(e) => setAuthName(e.target.value)}
             maxLength={30}
@@ -616,7 +687,7 @@ export default function App() {
           />
           {authError && <div className="join-error">{authError}</div>}
           <button type="submit" disabled={authBusy}>
-            {authMode === "login" ? "התחבר/י" : "הרשמ/י"}
+            {authMode === "login" ? "התחברי" : "הירשמי"}
           </button>
         </form>
       </div>
@@ -662,7 +733,7 @@ export default function App() {
                         </div>
                       )}
                       <label className="attach-button task-attach-button">
-                        צרף קובץ
+                        צרפי קובץ
                         <input
                           type="file"
                           hidden
@@ -735,9 +806,14 @@ export default function App() {
           </h1>
           <div className="presence">
             {online.length > 0
-              ? `מחוברים כעת: ${online.join(", ")}`
-              : "אין משתמשים מחוברים"}
+              ? `מחוברות כעת: ${online.join(", ")}`
+              : "אין משתמשות מחוברות"}
           </div>
+          {active?.type === "group" && myRole === "admin" && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={openManageGroup}>
+              ניהול קבוצה
+            </button>
+          )}
         </header>
 
         {messageActionError && (
@@ -804,8 +880,8 @@ export default function App() {
           {typingUsers.length > 0 && (
             <div className="typing-indicator">
               {typingUsers.length === 1
-                ? `${typingUsers[0]} מקליד/ה...`
-                : `${typingUsers.join(", ")} מקלידים...`}
+                ? `${typingUsers[0]} מקלידה...`
+                : `${typingUsers.join(", ")} מקלידות...`}
             </div>
           )}
           <div ref={bottomRef} />
@@ -817,14 +893,14 @@ export default function App() {
           <div className="pending-attachment">
             <span className="pending-attachment-name">{pendingAttachment.originalName}</span>
             <button type="button" onClick={handleRemovePendingAttachment}>
-              הסר
+              הסירי
             </button>
           </div>
         )}
 
         <form className="composer" onSubmit={handleSend}>
           <label className="attach-button">
-            {attachmentUploading ? "..." : "צרף קובץ"}
+            {attachmentUploading ? "..." : "צרפי קובץ"}
             <input
               type="file"
               onChange={handleAttachmentSelect}
@@ -834,12 +910,12 @@ export default function App() {
           </label>
           <input
             type="text"
-            placeholder="הקלד/י הודעה..."
+            placeholder="הקלידי הודעה..."
             value={draft}
             onChange={(e) => handleDraftChange(e.target.value)}
             maxLength={2000}
           />
-          <button type="submit">שלח</button>
+          <button type="submit">שלחי</button>
         </form>
       </div>
     );
@@ -914,18 +990,18 @@ export default function App() {
             <input
               autoFocus
               type="text"
-              placeholder="שם המשתמש של הצד השני"
+              placeholder="שם המשתמשת של הצד השני"
               value={partnerInput}
               onChange={(e) => setPartnerInput(e.target.value)}
               maxLength={30}
             />
             {formError && <div className="join-error">{formError}</div>}
             <button type="submit" className="btn btn-primary">
-              התחל/י שיחה
+              התחילי שיחה
             </button>
             {registeredUsers.length > 0 && (
               <div className="user-list">
-                <p className="user-list-title">או בחר/י מהמשתמשים הרשומים:</p>
+                <p className="user-list-title">או בחרי מהמשתמשות הרשומות:</p>
                 {registeredUsers.map((name) => (
                   <button
                     key={name}
@@ -975,7 +1051,7 @@ export default function App() {
               onChange={(e) => setGroupName(e.target.value)}
               maxLength={50}
             />
-            <p className="user-list-title">בחר/י משתתפים:</p>
+            <p className="user-list-title">בחרי משתתפות:</p>
             <div className="user-list">
               {registeredUsers.map((name) => (
                 <label key={name} className="checkbox-row">
@@ -987,13 +1063,77 @@ export default function App() {
                   {name}
                 </label>
               ))}
-              {registeredUsers.length === 0 && <p>אין עוד משתמשים רשומים.</p>}
+              {registeredUsers.length === 0 && <p>אין עוד משתמשות רשומות.</p>}
             </div>
             {formError && <div className="join-error">{formError}</div>}
             <button type="submit" className="btn btn-primary">
-              צור/י קבוצה
+              צרי קבוצה
             </button>
           </form>
+        </div>
+      )}
+
+      {showManageGroup && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeManageGroup();
+          }}
+        >
+          <div className="modal-panel">
+            <div className="modal-head">
+              <h3>ניהול חברות בקבוצה</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={closeManageGroup}
+                aria-label="סגירה"
+              >
+                ✕
+              </button>
+            </div>
+
+            {manageGroupError && <div className="join-error">{manageGroupError}</div>}
+
+            <div className="user-list">
+              {groupMembers.map((name) => (
+                <div key={name} className="checkbox-row" style={{ justifyContent: "space-between" }}>
+                  <span>{name}</span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm btn-danger"
+                    disabled={manageGroupBusy}
+                    onClick={() => handleRemoveGroupMember(name)}
+                  >
+                    הסירי
+                  </button>
+                </div>
+              ))}
+              {groupMembers.length === 0 && <p>אין עדיין חברות בקבוצה.</p>}
+            </div>
+
+            <form className="modal-panel" onSubmit={handleAddGroupMember}>
+              <p className="user-list-title">הוספת חברה:</p>
+              <input
+                type="text"
+                list="registered-users-list"
+                placeholder="שם משתמשת"
+                value={addMemberName}
+                onChange={(e) => setAddMemberName(e.target.value)}
+                maxLength={30}
+              />
+              <datalist id="registered-users-list">
+                {registeredUsers
+                  .filter((name) => !groupMembers.includes(name))
+                  .map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+              </datalist>
+              <button type="submit" className="btn btn-primary" disabled={manageGroupBusy}>
+                הוספה
+              </button>
+            </form>
+          </div>
         </div>
       )}
     </>

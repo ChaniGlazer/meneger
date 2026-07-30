@@ -13,6 +13,7 @@ const {
   deleteMessage,
   createUser,
   findUser,
+  updateUserPassword,
   findUserById,
   listAllUsers,
   listTeamMembers,
@@ -28,8 +29,10 @@ const {
   listOtherUsers,
   getOrCreateDmConversation,
   createGroupConversation,
+  getConversationById,
   getConversationMembers,
   addConversationMember,
+  removeConversationMember,
   isMember,
   listConversationsForUser,
   TASK_PRIORITIES,
@@ -97,7 +100,7 @@ app.post(
     const email = String(req.body?.email || "").trim().toLowerCase().slice(0, 200);
 
     if (username.length < 2) {
-      return res.status(400).json({ error: "שם המשתמש חייב להכיל לפחות 2 תווים" });
+      return res.status(400).json({ error: "שם המשתמשת חייב להכיל לפחות 2 תווים" });
     }
     if (password.length < 6) {
       return res.status(400).json({ error: "הסיסמה חייבת להכיל לפחות 6 תווים" });
@@ -106,7 +109,7 @@ app.post(
       return res.status(400).json({ error: "יש להזין כתובת אימייל תקינה" });
     }
     if (await findUser(username)) {
-      return res.status(409).json({ error: "שם המשתמש הזה כבר תפוס" });
+      return res.status(409).json({ error: "שם המשתמשת הזה כבר תפוס" });
     }
 
     // The very first account bootstraps the system as admin and doesn't need
@@ -140,7 +143,7 @@ app.post(
 
     const user = await findUser(username);
     if (!user || !verifyPassword(password, user.password_hash)) {
-      return res.status(401).json({ error: "שם משתמש או סיסמה שגויים" });
+      return res.status(401).json({ error: "שם משתמשת או סיסמה שגויים" });
     }
 
     const token = createToken();
@@ -152,7 +155,7 @@ app.post(
 function requireAuth(req, res, next) {
   const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   const username = sessions.get(token);
-  if (!username) return res.status(401).json({ error: "לא מחובר/ת" });
+  if (!username) return res.status(401).json({ error: "לא מחוברת" });
   req.username = username;
   next();
 }
@@ -160,7 +163,7 @@ function requireAuth(req, res, next) {
 const requireAdmin = ah(async (req, res, next) => {
   const user = await findUser(req.username);
   if (!user || user.role !== "admin") {
-    return res.status(403).json({ error: "אין הרשאת מנהל/ת" });
+    return res.status(403).json({ error: "אין הרשאת מנהלת" });
   }
   next();
 });
@@ -180,6 +183,27 @@ app.get(
   ah(async (req, res) => {
     const user = await findUser(req.username);
     res.json({ id: user.id, username: user.username, role: user.role });
+  })
+);
+
+app.post(
+  "/api/change-password",
+  requireAuth,
+  ah(async (req, res) => {
+    const currentPassword = String(req.body?.currentPassword || "");
+    const newPassword = String(req.body?.newPassword || "");
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "הסיסמה החדשה חייבת להכיל לפחות 6 תווים" });
+    }
+
+    const user = await findUser(req.username);
+    if (!verifyPassword(currentPassword, user.password_hash)) {
+      return res.status(401).json({ error: "הסיסמה הנוכחית שגויה" });
+    }
+
+    await updateUserPassword(req.username, hashPassword(newPassword));
+    res.json({ ok: true });
   })
 );
 
@@ -242,11 +266,11 @@ app.post(
 
     for (const m of cleanMembers) {
       if (!(await findUser(m))) {
-        return res.status(400).json({ error: `לא נמצא משתמש בשם "${m}"` });
+        return res.status(400).json({ error: `לא נמצאה משתמשת בשם "${m}"` });
       }
     }
     if (cleanMembers.length < 1) {
-      return res.status(400).json({ error: "יש לבחור לפחות משתתף אחד נוסף לקבוצה" });
+      return res.status(400).json({ error: "יש לבחור לפחות משתתפת אחת נוספת לקבוצה" });
     }
 
     const allMembers = [req.username, ...cleanMembers];
@@ -259,6 +283,81 @@ app.post(
     }
 
     res.status(201).json({ id, type: "group", name, members: allMembers });
+  })
+);
+
+async function requireGroupConversation(req, res) {
+  const conversation = await getConversationById(req.params.id);
+  if (!conversation || conversation.type !== "group") {
+    res.status(404).json({ error: "הקבוצה לא נמצאה" });
+    return null;
+  }
+  return conversation;
+}
+
+app.get(
+  "/api/conversations/:id/members",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    const conversation = await requireGroupConversation(req, res);
+    if (!conversation) return;
+    res.json({ members: await getConversationMembers(conversation.id) });
+  })
+);
+
+app.post(
+  "/api/conversations/:id/members",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    const conversation = await requireGroupConversation(req, res);
+    if (!conversation) return;
+
+    const username = String(req.body?.username || "").trim().slice(0, 30);
+    if (!username || !(await findUser(username))) {
+      return res.status(400).json({ error: `לא נמצאה משתמשת בשם "${username}"` });
+    }
+    if (await isMember(conversation.id, username)) {
+      return res.status(409).json({ error: "המשתמשת כבר חברה בקבוצה" });
+    }
+
+    await addConversationMember(conversation.id, username);
+    for (const [socketId, client] of clients) {
+      if (client.username === username) {
+        io.sockets.sockets.get(socketId)?.join(conversation.id);
+      }
+    }
+    io.to(`user:${username}`).emit("added-to-conversation", { id: conversation.id, name: conversation.name });
+    await broadcastPresence(conversation.id);
+
+    res.status(201).json({ members: await getConversationMembers(conversation.id) });
+  })
+);
+
+app.delete(
+  "/api/conversations/:id/members/:username",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    const conversation = await requireGroupConversation(req, res);
+    if (!conversation) return;
+
+    const username = String(req.params.username || "").trim();
+    if (!(await isMember(conversation.id, username))) {
+      return res.status(404).json({ error: "המשתמשת אינה חברה בקבוצה" });
+    }
+
+    await removeConversationMember(conversation.id, username);
+    for (const [socketId, client] of clients) {
+      if (client.username === username) {
+        io.sockets.sockets.get(socketId)?.leave(conversation.id);
+      }
+    }
+    io.to(`user:${username}`).emit("removed-from-conversation", { id: conversation.id });
+    await broadcastPresence(conversation.id);
+
+    res.json({ members: await getConversationMembers(conversation.id) });
   })
 );
 
@@ -315,7 +414,7 @@ app.post(
       assignedTo = parseId(req.body.assigned_to);
       assignedToUser = assignedTo !== null ? await findUserById(assignedTo) : null;
       if (!assignedToUser) {
-        return res.status(400).json({ error: "משתמש לא קיים" });
+        return res.status(400).json({ error: "משתמשת לא קיימת" });
       }
     }
 
@@ -397,7 +496,7 @@ app.patch(
     if (requestsEditorFields) {
       const requestingUser = await findUser(req.username);
       if (!requestingUser || requestingUser.role !== "admin") {
-        return res.status(403).json({ error: "אין הרשאת מנהל/ת" });
+        return res.status(403).json({ error: "אין הרשאת מנהלת" });
       }
     }
 
@@ -439,7 +538,7 @@ app.patch(
         const assignedTo = parseId(req.body.assigned_to);
         newAssigneeUser = assignedTo !== null ? await findUserById(assignedTo) : null;
         if (!newAssigneeUser) {
-          return res.status(400).json({ error: "משתמש לא קיים" });
+          return res.status(400).json({ error: "משתמשת לא קיימת" });
         }
         fields.assigned_to = assignedTo;
       }
@@ -544,7 +643,7 @@ app.post(
     if (req.body?.user_id != null && req.body.user_id !== "") {
       userId = parseId(req.body.user_id);
       if (userId === null || !(await findUserById(userId))) {
-        return res.status(400).json({ error: "משתמש לא קיים" });
+        return res.status(400).json({ error: "משתמשת לא קיימת" });
       }
     }
 
@@ -631,7 +730,7 @@ app.patch(
     if (req.body?.user_id !== undefined) {
       const userId = parseId(req.body.user_id);
       if (userId === null || !(await findUserById(userId))) {
-        return res.status(400).json({ error: "משתמש לא קיים" });
+        return res.status(400).json({ error: "משתמשת לא קיימת" });
       }
       fields.user_id = userId;
     }
@@ -663,7 +762,7 @@ app.patch(
     const id = parseId(req.params.id);
     const target = id !== null && (await findUserById(id));
     if (!target) {
-      return res.status(404).json({ error: "משתמש/ת לא נמצא/ה" });
+      return res.status(404).json({ error: "משתמשת לא נמצאה" });
     }
 
     if (req.body?.role !== undefined) {
@@ -674,7 +773,7 @@ app.patch(
       }
       const requestingUser = await findUser(req.username);
       if (requestingUser.id === id && req.body.role !== "admin") {
-        return res.status(400).json({ error: "אי אפשר לשלול הרשאת מנהל/ת מעצמך/ך" });
+        return res.status(400).json({ error: "אי אפשר לשלול הרשאת מנהלת מעצמך" });
       }
       await updateUserRole(id, req.body.role);
     }
@@ -685,10 +784,10 @@ app.patch(
         teamLeadId = parseId(req.body.team_lead_id);
         const lead = teamLeadId !== null && (await findUserById(teamLeadId));
         if (!lead || lead.role !== "team_lead") {
-          return res.status(400).json({ error: "יש לבחור ראש/ת צוות תקין/ה" });
+          return res.status(400).json({ error: "יש לבחור ראשת צוות תקינה" });
         }
         if (teamLeadId === id) {
-          return res.status(400).json({ error: "אי אפשר להקצות משתמש/ת כראש הצוות של עצמו/ה" });
+          return res.status(400).json({ error: "אי אפשר להקצות משתמשת כראשת הצוות של עצמה" });
         }
       }
       await updateUserTeamLead(id, teamLeadId);
@@ -767,7 +866,7 @@ app.get(
     if (req.currentUser.role !== "admin") {
       const teamIds = (await listTeamMembers(req.currentUser.id)).map((u) => u.id);
       if (filters.assigned_to != null && !teamIds.includes(filters.assigned_to)) {
-        return res.status(403).json({ error: "אין גישה לעובד/ת זו" });
+        return res.status(403).json({ error: "אין גישה לעובדת זו" });
       }
       filters.assigned_to_in = teamIds;
     }
@@ -804,7 +903,7 @@ app.get(
     if (req.currentUser.role !== "admin") {
       const teamIds = (await listTeamMembers(req.currentUser.id)).map((u) => u.id);
       if (filters.user_id != null && !teamIds.includes(filters.user_id)) {
-        return res.status(403).json({ error: "אין גישה לעובד/ת זו" });
+        return res.status(403).json({ error: "אין גישה לעובדת זו" });
       }
       filters.user_ids = teamIds;
     }
@@ -904,7 +1003,7 @@ io.on(
           return;
         }
         if (!(await findUser(cleanPartner))) {
-          socket.emit("open-error", `לא נמצא משתמש בשם "${cleanPartner}"`);
+          socket.emit("open-error", `לא נמצאה משתמשת בשם "${cleanPartner}"`);
           return;
         }
 

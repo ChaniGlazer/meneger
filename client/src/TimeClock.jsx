@@ -70,14 +70,14 @@ export default function TimeClock() {
 
   return (
     <div className="time-clock-bar">
-      <div className="app-brand">מערכת ניהול עובדים</div>
+      <div className="app-brand">מערכת ניהול עובדות</div>
 
       {!loading && (
         <div className="time-clock-widget">
           {openLog ? (
             <>
               <span className="time-clock-status">
-                נוכח/ת מ-{formatClockTime(openLog.clock_in)} ·{" "}
+                נוכחת מ-{formatClockTime(openLog.clock_in)} ·{" "}
                 {formatElapsed(now - toDate(openLog.clock_in).getTime())}
               </span>
               <button

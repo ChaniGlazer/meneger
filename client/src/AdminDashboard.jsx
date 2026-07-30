@@ -10,12 +10,12 @@ const TASK_STATUS_LABELS = {
 
 const TASK_PRIORITY_LABELS = { low: "נמוכה", medium: "בינונית", high: "גבוהה" };
 
-const ROLE_LABELS = { employee: "עובד/ת", team_lead: "ראש/ת צוות", admin: "מנהל/ת" };
+const ROLE_LABELS = { employee: "עובדת", team_lead: "ראשת צוות", admin: "מנהלת" };
 
 const ADMIN_TABS = [
   { key: "tasks", label: "משימות" },
   { key: "hours", label: "שעות עבודה" },
-  { key: "users", label: "משתמשים", adminOnly: true },
+  { key: "users", label: "משתמשות", adminOnly: true },
 ];
 
 function todayIso() {
@@ -249,7 +249,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
   function handleExportHoursCsv() {
     downloadCsv(
       `דוח-שעות_${hoursFrom}_${hoursTo}.csv`,
-      ["עובד/ת", "סה\"כ שעות", "מספר רישומים"],
+      ["עובדת", "סה\"כ שעות", "מספר רישומים"],
       hoursReport.map((r) => [r.username, r.total_hours.toFixed(2), r.entries])
     );
   }
@@ -318,7 +318,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
             onChange={(e) => setTaskAssignedTo(e.target.value)}
             aria-label="סינון לפי עובדת"
           >
-            <option value="">כל העובדות/ים</option>
+            <option value="">כל העובדות</option>
             {employees.map((emp) => (
               <option key={emp.id} value={emp.id}>
                 {emp.username}
@@ -536,7 +536,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
             onChange={(e) => setHoursUserId(e.target.value)}
             aria-label="סינון לפי עובדת"
           >
-            <option value="">כל העובדות/ים</option>
+            <option value="">כל העובדות</option>
             {employees.map((emp) => (
               <option key={emp.id} value={emp.id}>
                 {emp.username}
@@ -562,7 +562,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
           <table className="admin-table">
             <thead>
               <tr>
-                <th>עובד/ת</th>
+                <th>עובדת</th>
                 <th>סה"כ שעות</th>
                 <th>מספר רישומים</th>
               </tr>
@@ -588,7 +588,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
       {activeTab === "users" && (
       <section className="admin-section">
         <div className="admin-section-head">
-          <h2>הזמנת משתמשים</h2>
+          <h2>הזמנת משתמשות</h2>
         </div>
 
         <p className="empty-hint">
@@ -659,9 +659,9 @@ export default function AdminDashboard({ myUserId, myRole }) {
           <table className="admin-table">
             <thead>
               <tr>
-                <th>שם משתמש</th>
+                <th>שם משתמשת</th>
                 <th>תפקיד</th>
-                <th>ראש/ת צוות</th>
+                <th>ראשת צוות</th>
               </tr>
             </thead>
             <tbody>
@@ -673,7 +673,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
                       value={u.role}
                       onChange={(e) => handleChangeRole(u.id, e.target.value)}
                       disabled={u.id === myUserId}
-                      title={u.id === myUserId ? "אי אפשר לשנות את התפקיד של עצמך/ך" : undefined}
+                      title={u.id === myUserId ? "אי אפשר לשנות את התפקיד של עצמך" : undefined}
                     >
                       {Object.entries(ROLE_LABELS).map(([key, label]) => (
                         <option key={key} value={key}>
@@ -687,7 +687,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
                       value={u.team_lead_id ?? ""}
                       onChange={(e) => handleChangeTeamLead(u.id, e.target.value)}
                       disabled={u.id === myUserId}
-                      title={u.id === myUserId ? "אי אפשר להקצות ראש צוות לעצמך/ך" : undefined}
+                      title={u.id === myUserId ? "אי אפשר להקצות ראשת צוות לעצמך" : undefined}
                     >
                       <option value="">— ללא —</option>
                       {employees
@@ -703,7 +703,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
               ))}
             </tbody>
           </table>
-          {employees.length === 0 && <p className="empty-hint">לא נמצאו משתמשים</p>}
+          {employees.length === 0 && <p className="empty-hint">לא נמצאו משתמשות</p>}
         </div>
       </section>
       )}
