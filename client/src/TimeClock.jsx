@@ -1,6 +1,3 @@
-import { useEffect, useState } from "react";
-import { authedFetch } from "./api";
-
 function toDate(iso) {
   return new Date(iso.endsWith("Z") ? iso : iso + "Z");
 }
@@ -17,57 +14,12 @@ function formatElapsed(ms) {
   return `${h}:${m}:${s}`;
 }
 
-export default function TimeClock() {
-  const [openLog, setOpenLog] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [now, setNow] = useState(Date.now());
-
-  useEffect(() => {
-    authedFetch("time-logs?open=true")
-      .then((data) => setOpenLog(data.timeLogs[0] || null))
-      .catch(() => setError("שגיאה בטעינת שעון הנוכחות"))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    if (!openLog) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [openLog]);
-
-  async function handleClockIn() {
-    setBusy(true);
-    setError("");
-    try {
-      const data = await authedFetch("time-logs", { method: "POST", body: JSON.stringify({}) });
-      setOpenLog(data.timeLog);
-      setNow(Date.now());
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleClockOut() {
-    if (!openLog) return;
-    setBusy(true);
-    setError("");
-    try {
-      await authedFetch(`time-logs/${openLog.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ clock_out: new Date().toISOString() }),
-      });
-      setOpenLog(null);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
+/**
+ * Presentational only - the shift state itself lives in App.jsx so the top
+ * bar and the inbox home screen's shift card can share one source of truth
+ * instead of drifting when a shift is started/ended from either place.
+ */
+export default function TimeClock({ openLog, loading, busy, error, now, onClockIn, onClockOut }) {
   return (
     <div className="time-clock-bar">
       <div className="app-brand">
@@ -86,7 +38,7 @@ export default function TimeClock() {
               <button
                 type="button"
                 className="time-clock-button clock-out"
-                onClick={handleClockOut}
+                onClick={onClockOut}
                 disabled={busy}
               >
                 סיום עבודה
@@ -100,7 +52,7 @@ export default function TimeClock() {
               <button
                 type="button"
                 className="time-clock-button clock-in"
-                onClick={handleClockIn}
+                onClick={onClockIn}
                 disabled={busy}
               >
                 התחלת עבודה

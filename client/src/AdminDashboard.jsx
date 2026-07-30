@@ -2,15 +2,7 @@ import { useEffect, useState } from "react";
 import { authedFetch } from "./api";
 import Modal from "./components/Modal";
 import ConfirmDialog from "./components/ConfirmDialog";
-
-const TASK_STATUS_LABELS = {
-  todo: "לביצוע",
-  in_progress: "בתהליך",
-  review: "להגהה",
-  done: "הושלם",
-};
-
-const TASK_PRIORITY_LABELS = { low: "נמוכה", medium: "בינונית", high: "גבוהה" };
+import { TASK_STATUS_LABELS, TASK_PRIORITY_LABELS } from "./taskMeta";
 
 const ROLE_LABELS = { employee: "עובדת", team_lead: "ראשת צוות", admin: "מנהלת" };
 

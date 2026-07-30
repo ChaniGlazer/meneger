@@ -4,8 +4,10 @@ import { api, authedFetch, uploadFile } from "./api";
 import TimeClock from "./TimeClock";
 import AdminDashboard from "./AdminDashboard";
 import Sidebar from "./Sidebar";
+import Inbox from "./Inbox";
 import Modal from "./components/Modal";
 import ConfirmDialog from "./components/ConfirmDialog";
+import { TASK_STATUS_COLUMNS, TASK_PRIORITY_LABELS } from "./taskMeta";
 
 const socket = io(import.meta.env.VITE_SOCKET_URL || undefined, { autoConnect: false });
 
@@ -74,15 +76,6 @@ function playPing() {
   }
 }
 
-const TASK_STATUS_COLUMNS = [
-  { key: "todo", label: "לביצוע" },
-  { key: "in_progress", label: "בתהליך" },
-  { key: "review", label: "להגהה" },
-  { key: "done", label: "הושלם" },
-];
-
-const TASK_PRIORITY_LABELS = { low: "נמוכה", medium: "בינונית", high: "גבוהה" };
-
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 function groupReactions(reactions) {
@@ -105,6 +98,14 @@ export default function App() {
   const [tasks, setTasks] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState("");
+
+  // Lifted out of TimeClock.jsx so the inbox home screen and the top bar
+  // can both reflect the same shift without owning two copies of the state.
+  const [timeClockOpenLog, setTimeClockOpenLog] = useState(null);
+  const [timeClockLoading, setTimeClockLoading] = useState(true);
+  const [timeClockBusy, setTimeClockBusy] = useState(false);
+  const [timeClockError, setTimeClockError] = useState("");
+  const [timeClockNow, setTimeClockNow] = useState(Date.now());
   const [authMode, setAuthMode] = useState("login"); // "login" | "register"
   const [authName, setAuthName] = useState("");
   const [authEmail, setAuthEmail] = useState("");
@@ -117,6 +118,7 @@ export default function App() {
   const [conversationsError, setConversationsError] = useState("");
   const [unreadCounts, setUnreadCounts] = useState({});
   const [registeredUsers, setRegisteredUsers] = useState([]);
+  const [registeredUsersError, setRegisteredUsersError] = useState("");
 
   const [showNewChat, setShowNewChat] = useState(false);
   const [partnerInput, setPartnerInput] = useState("");
@@ -209,9 +211,10 @@ export default function App() {
   }
 
   function fetchUsers() {
+    setRegisteredUsersError("");
     authedFetch("users")
       .then((data) => setRegisteredUsers(data.users))
-      .catch(() => {});
+      .catch(() => setRegisteredUsersError("לא ניתן היה לטעון את רשימת המשתמשות"));
   }
 
   function fetchTasks(userId) {
@@ -230,6 +233,52 @@ export default function App() {
 
   function enterAdmin() {
     setStage("admin");
+  }
+
+  function fetchTimeClockStatus() {
+    setTimeClockLoading(true);
+    setTimeClockError("");
+    authedFetch("time-logs?open=true")
+      .then((data) => setTimeClockOpenLog(data.timeLogs[0] || null))
+      .catch(() => setTimeClockError("שגיאה בטעינת שעון הנוכחות"))
+      .finally(() => setTimeClockLoading(false));
+  }
+
+  useEffect(() => {
+    if (!timeClockOpenLog) return;
+    const timer = setInterval(() => setTimeClockNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [timeClockOpenLog]);
+
+  async function handleClockIn() {
+    setTimeClockBusy(true);
+    setTimeClockError("");
+    try {
+      const data = await authedFetch("time-logs", { method: "POST", body: JSON.stringify({}) });
+      setTimeClockOpenLog(data.timeLog);
+      setTimeClockNow(Date.now());
+    } catch (err) {
+      setTimeClockError(err.message);
+    } finally {
+      setTimeClockBusy(false);
+    }
+  }
+
+  async function handleClockOut() {
+    if (!timeClockOpenLog) return;
+    setTimeClockBusy(true);
+    setTimeClockError("");
+    try {
+      await authedFetch(`time-logs/${timeClockOpenLog.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ clock_out: new Date().toISOString() }),
+      });
+      setTimeClockOpenLog(null);
+    } catch (err) {
+      setTimeClockError(err.message);
+    } finally {
+      setTimeClockBusy(false);
+    }
   }
 
   async function handleUpdateTaskStatus(taskId, status) {
@@ -273,12 +322,14 @@ export default function App() {
     });
   }
 
-  function enterInbox() {
+  function enterInbox(userId = myUserId) {
     setStage("inbox");
     setActive(null);
     setMessages([]);
     fetchConversations();
     fetchUsers();
+    fetchTimeClockStatus();
+    if (userId != null) fetchTasks(userId);
   }
 
   // Validate any stored session on load
@@ -296,7 +347,7 @@ export default function App() {
         setMyRole(role);
         socket.connect();
         socket.emit("authenticate", { token });
-        enterInbox();
+        enterInbox(id);
       })
       .catch(() => {
         localStorage.removeItem("chat-token");
@@ -457,7 +508,7 @@ export default function App() {
       setMyRole(data.role);
       socket.connect();
       socket.emit("authenticate", { token: data.token });
-      enterInbox();
+      enterInbox(data.id);
     } catch (err) {
       setAuthError(err.message);
     } finally {
@@ -1100,16 +1151,49 @@ export default function App() {
   } else {
     mainContent = (
       <div className="panel inbox-panel">
-        <div className="inbox-empty">
-          <h1>שלום, {username}</h1>
-        </div>
+        <Inbox
+          username={username}
+          myRole={myRole}
+          tasks={tasks}
+          tasksLoading={tasksLoading}
+          conversations={conversations}
+          conversationsLoading={conversationsLoading}
+          unreadCounts={unreadCounts}
+          timeClockOpenLog={timeClockOpenLog}
+          timeClockLoading={timeClockLoading}
+          timeClockBusy={timeClockBusy}
+          timeClockError={timeClockError}
+          onClockIn={handleClockIn}
+          onClockOut={handleClockOut}
+          onSelectConversation={openConversation}
+          onEnterTasks={enterTasks}
+          onEnterAdmin={enterAdmin}
+          onOpenNewChat={() => {
+            setShowNewChat(true);
+            setShowNewGroup(false);
+            setFormError("");
+          }}
+          onOpenNewGroup={() => {
+            setShowNewGroup(true);
+            setShowNewChat(false);
+            setFormError("");
+          }}
+        />
       </div>
     );
   }
 
   return (
     <>
-      <TimeClock />
+      <TimeClock
+        openLog={timeClockOpenLog}
+        loading={timeClockLoading}
+        busy={timeClockBusy}
+        error={timeClockError}
+        now={timeClockNow}
+        onClockIn={handleClockIn}
+        onClockOut={handleClockOut}
+      />
       <div className="app-shell with-time-clock">
         <Sidebar
           username={username}
@@ -1184,6 +1268,7 @@ export default function App() {
           maxLength={30}
         />
         {formError && <div className="join-error">{formError}</div>}
+        {registeredUsersError && <div className="join-error">{registeredUsersError}</div>}
         <button type="submit" className="btn btn-primary">
           התחילי שיחה
         </button>
@@ -1234,6 +1319,7 @@ export default function App() {
           {registeredUsers.length === 0 && <p>אין עוד משתמשות רשומות.</p>}
         </div>
         {formError && <div className="join-error">{formError}</div>}
+        {registeredUsersError && <div className="join-error">{registeredUsersError}</div>}
         <button type="submit" className="btn btn-primary">
           צרי קבוצה
         </button>
