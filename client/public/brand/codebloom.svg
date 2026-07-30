@@ -1,0 +1,31 @@
+<!--
+  Codebloom mark — SVG reconstruction from the supplied raster logo.
+  Replace this file with the official vector asset when available; the app
+  references it only by path (/brand/codebloom.svg), so a swap needs no code change.
+  Palette here matches the design tokens in src/index.css.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Codebloom">
+  <defs>
+    <linearGradient id="cb-field" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#204066"/>
+      <stop offset="1" stop-color="#0f1c2e"/>
+    </linearGradient>
+    <linearGradient id="cb-petal" x1="0.15" y1="0.1" x2="0.85" y2="0.9">
+      <stop offset="0" stop-color="#e28647"/>
+      <stop offset="0.55" stop-color="#d0702f"/>
+      <stop offset="1" stop-color="#bd5c1e"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="114" ry="114" fill="url(#cb-field)"/>
+
+  <g fill="url(#cb-petal)">
+    <!-- one petal, rotated into a four-fold bloom -->
+    <path d="M256 74 C314 158 314 216 256 264 C198 216 198 158 256 74 Z"/>
+    <path d="M256 74 C314 158 314 216 256 264 C198 216 198 158 256 74 Z" transform="rotate(90 256 256)"/>
+    <path d="M256 74 C314 158 314 216 256 264 C198 216 198 158 256 74 Z" transform="rotate(180 256 256)"/>
+    <path d="M256 74 C314 158 314 216 256 264 C198 216 198 158 256 74 Z" transform="rotate(270 256 256)"/>
+  </g>
+
+  <circle cx="256" cy="256" r="38" fill="#fdf1e5"/>
+</svg>
