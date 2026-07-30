@@ -16,6 +16,17 @@ const FOCUSABLE_SELECTOR =
 export default function Modal({ open, onClose, onSubmit, title, children, maxWidth }) {
   const panelRef = useRef(null);
   const triggerRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  // Keep the ref current without making it a dependency of the effect below -
+  // callers pass a new `onClose` function identity on every render (inline
+  // arrows, or plain functions redefined each render), and depending on it
+  // directly re-ran the effect on every keystroke in any field inside the
+  // modal, which stole focus back to the first focusable element (the close
+  // button) after every character typed.
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -35,7 +46,7 @@ export default function Modal({ open, onClose, onSubmit, title, children, maxWid
 
     function handleKeyDown(e) {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab") return;
@@ -58,7 +69,7 @@ export default function Modal({ open, onClose, onSubmit, title, children, maxWid
       document.body.style.overflow = "";
       triggerRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
