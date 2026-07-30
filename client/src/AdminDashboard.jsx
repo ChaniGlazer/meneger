@@ -10,12 +10,12 @@ const TASK_STATUS_LABELS = {
 
 const TASK_PRIORITY_LABELS = { low: "נמוכה", medium: "בינונית", high: "גבוהה" };
 
-const ROLE_LABELS = { employee: "עובד/ת", admin: "מנהל/ת" };
+const ROLE_LABELS = { employee: "עובד/ת", team_lead: "ראש/ת צוות", admin: "מנהל/ת" };
 
 const ADMIN_TABS = [
   { key: "tasks", label: "משימות" },
   { key: "hours", label: "שעות עבודה" },
-  { key: "users", label: "משתמשים" },
+  { key: "users", label: "משתמשים", adminOnly: true },
 ];
 
 function todayIso() {
@@ -52,7 +52,8 @@ function formatDateTime(iso) {
   return new Date(iso).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" });
 }
 
-export default function AdminDashboard({ myUserId }) {
+export default function AdminDashboard({ myUserId, myRole }) {
+  const visibleTabs = ADMIN_TABS.filter((tab) => !tab.adminOnly || myRole === "admin");
   const [activeTab, setActiveTab] = useState("tasks");
   const [employees, setEmployees] = useState([]);
   const [usersError, setUsersError] = useState("");
@@ -93,7 +94,10 @@ export default function AdminDashboard({ myUserId }) {
       .catch((err) => setInvitesError(err.message));
   }
 
-  useEffect(fetchInvites, []);
+  useEffect(() => {
+    if (myRole === "admin") fetchInvites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleAddInvite(e) {
     e.preventDefault();
@@ -265,10 +269,27 @@ export default function AdminDashboard({ myUserId }) {
     }
   }
 
+  async function handleChangeTeamLead(userId, teamLeadId) {
+    const previous = employees;
+    setUsersError("");
+    setEmployees((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, team_lead_id: teamLeadId || null } : u))
+    );
+    try {
+      await authedFetch(`admin/users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ team_lead_id: teamLeadId || null }),
+      });
+    } catch (err) {
+      setEmployees(previous);
+      setUsersError(err.message);
+    }
+  }
+
   return (
     <div className="admin-sections">
       <div className="admin-tabs" role="tablist">
-        {ADMIN_TABS.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.key}
             type="button"
@@ -473,12 +494,16 @@ export default function AdminDashboard({ myUserId }) {
                   </td>
                   <td>{task.due_date || <span className="admin-cell-muted">—</span>}</td>
                   <td className="admin-task-row-actions">
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditTaskForm(task)}>
-                      עריכה
-                    </button>
-                    <button type="button" className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDeleteTask(task)}>
-                      מחיקה
-                    </button>
+                    {myRole === "admin" && (
+                      <>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditTaskForm(task)}>
+                          עריכה
+                        </button>
+                        <button type="button" className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDeleteTask(task)}>
+                          מחיקה
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -636,6 +661,7 @@ export default function AdminDashboard({ myUserId }) {
               <tr>
                 <th>שם משתמש</th>
                 <th>תפקיד</th>
+                <th>ראש/ת צוות</th>
               </tr>
             </thead>
             <tbody>
@@ -654,6 +680,23 @@ export default function AdminDashboard({ myUserId }) {
                           {label}
                         </option>
                       ))}
+                    </select>
+                  </td>
+                  <td>
+                    <select
+                      value={u.team_lead_id ?? ""}
+                      onChange={(e) => handleChangeTeamLead(u.id, e.target.value)}
+                      disabled={u.id === myUserId}
+                      title={u.id === myUserId ? "אי אפשר להקצות ראש צוות לעצמך/ך" : undefined}
+                    >
+                      <option value="">— ללא —</option>
+                      {employees
+                        .filter((e) => e.role === "team_lead" && e.id !== u.id)
+                        .map((lead) => (
+                          <option key={lead.id} value={lead.id}>
+                            {lead.username}
+                          </option>
+                        ))}
                     </select>
                   </td>
                 </tr>

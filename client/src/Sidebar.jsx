@@ -30,7 +30,9 @@ export default function Sidebar({
         </div>
         <div>
           <div className="sidebar-username">{username}</div>
-          <div className="sidebar-role-badge">{myRole === "admin" ? "מנהל/ת" : "עובד/ת"}</div>
+          <div className="sidebar-role-badge">
+            {myRole === "admin" ? "מנהל/ת" : myRole === "team_lead" ? "ראש/ת צוות" : "עובד/ת"}
+          </div>
         </div>
       </div>
 
@@ -47,10 +49,10 @@ export default function Sidebar({
           <span className="sidebar-nav-icon" aria-hidden="true">📋</span>
           המשימות שלי
         </button>
-        {myRole === "admin" && (
+        {(myRole === "admin" || myRole === "team_lead") && (
           <button type="button" className={stage === "admin" ? "active" : ""} onClick={onEnterAdmin}>
             <span className="sidebar-nav-icon" aria-hidden="true">⚙️</span>
-            מסך ניהול
+            {myRole === "admin" ? "מסך ניהול" : "ניהול הצוות"}
           </button>
         )}
       </nav>
@@ -61,7 +63,7 @@ export default function Sidebar({
           <button type="button" title="שיחה חדשה" aria-label="שיחה חדשה" onClick={onOpenNewChat}>
             +
           </button>
-          {myRole === "admin" && (
+          {(myRole === "admin" || myRole === "team_lead") && (
             <button type="button" title="קבוצה חדשה" aria-label="קבוצה חדשה" onClick={onOpenNewGroup}>
               👥
             </button>

@@ -738,7 +738,7 @@ app.delete(
 app.get(
   "/api/admin/tasks",
   requireAuth,
-  requireAdmin,
+  requireTeamLeadOrAdmin,
   ah(async (req, res) => {
     const filters = {};
     if (req.query.assigned_to != null) {
@@ -764,6 +764,13 @@ app.get(
       }
       filters.priority = req.query.priority;
     }
+    if (req.currentUser.role !== "admin") {
+      const teamIds = (await listTeamMembers(req.currentUser.id)).map((u) => u.id);
+      if (filters.assigned_to != null && !teamIds.includes(filters.assigned_to)) {
+        return res.status(403).json({ error: "אין גישה לעובד/ת זו" });
+      }
+      filters.assigned_to_in = teamIds;
+    }
     const tasks = await listAllTasksForAdmin(filters);
     res.json({ tasks: tasks.map(serializeTask) });
   })
@@ -772,7 +779,7 @@ app.get(
 app.get(
   "/api/admin/hours-report",
   requireAuth,
-  requireAdmin,
+  requireTeamLeadOrAdmin,
   ah(async (req, res) => {
     const filters = {};
     if (req.query.from) {
@@ -793,6 +800,13 @@ app.get(
         return res.status(400).json({ error: "user_id לא תקין" });
       }
       filters.user_id = userId;
+    }
+    if (req.currentUser.role !== "admin") {
+      const teamIds = (await listTeamMembers(req.currentUser.id)).map((u) => u.id);
+      if (filters.user_id != null && !teamIds.includes(filters.user_id)) {
+        return res.status(403).json({ error: "אין גישה לעובד/ת זו" });
+      }
+      filters.user_ids = teamIds;
     }
     res.json({ report: await getHoursReport(filters) });
   })

@@ -716,9 +716,9 @@ export default function App() {
     mainContent = (
       <div className="panel admin-panel">
         <header className="panel-header">
-          <h1>מסך ניהול</h1>
+          <h1>{myRole === "admin" ? "מסך ניהול" : "ניהול הצוות"}</h1>
         </header>
-        <AdminDashboard myUserId={myUserId} />
+        <AdminDashboard myUserId={myUserId} myRole={myRole} />
       </div>
     );
   } else if (stage === "chat") {
