@@ -1754,6 +1754,17 @@ button, input, select, textarea {
   background: var(--success-hover);
 }
 
+/* Filled destructive action (confirm dialogs). Distinct from .btn-ghost.btn-danger,
+   which is the quieter text-only danger button used inline in tables/rows. */
+.btn-danger {
+  background: var(--danger);
+  color: var(--fg-on-brand);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-hover);
+}
+
 .btn-ghost {
   background: none;
   color: var(--brand-fg-on-tint);

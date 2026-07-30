@@ -4,6 +4,8 @@ import { api, authedFetch, uploadFile } from "./api";
 import TimeClock from "./TimeClock";
 import AdminDashboard from "./AdminDashboard";
 import Sidebar from "./Sidebar";
+import Modal from "./components/Modal";
+import ConfirmDialog from "./components/ConfirmDialog";
 
 const socket = io(import.meta.env.VITE_SOCKET_URL || undefined, { autoConnect: false });
 
@@ -148,6 +150,8 @@ export default function App() {
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editingText, setEditingText] = useState("");
   const [messageActionError, setMessageActionError] = useState("");
+  const [confirmDeleteMessage, setConfirmDeleteMessage] = useState(null);
+  const [removedNotice, setRemovedNotice] = useState(false);
   const [reactionPickerFor, setReactionPickerFor] = useState(null);
 
   const bottomRef = useRef(null);
@@ -414,7 +418,7 @@ export default function App() {
     socket.on("removed-from-conversation", ({ id } = {}) => {
       fetchConversations();
       if (id === activeIdRef.current) {
-        window.alert("הוסרת מהקבוצה הזו");
+        setRemovedNotice(true);
         enterInbox();
       }
     });
@@ -684,9 +688,13 @@ export default function App() {
   }
 
   function handleDeleteMessage(msg) {
-    if (!window.confirm("למחוק את ההודעה?")) return;
+    setConfirmDeleteMessage(msg);
+  }
+
+  function confirmDeleteMessageNow() {
     setMessageActionError("");
-    socket.emit("delete-message", { id: msg.id });
+    socket.emit("delete-message", { id: confirmDeleteMessage.id });
+    setConfirmDeleteMessage(null);
   }
 
   function handleToggleReaction(messageId, emoji) {
@@ -1149,224 +1157,169 @@ export default function App() {
               </button>
             </div>
           )}
+          {removedNotice && (
+            <div className="banner" role="status">
+              הוסרת מהקבוצה הזו{" "}
+              <button
+                type="button"
+                className="toast-close"
+                aria-label="סגירה"
+                onClick={() => setRemovedNotice(false)}
+              >
+                ✕
+              </button>
+            </div>
+          )}
           {mainContent}
         </div>
       </div>
 
-      {showNewChat && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setShowNewChat(false);
-          }}
-        >
-          <form className="modal-panel" onSubmit={handleStartDm}>
-            <div className="modal-head">
-              <h3>שיחה חדשה</h3>
+      <Modal open={showNewChat} onClose={() => setShowNewChat(false)} onSubmit={handleStartDm} title="שיחה חדשה">
+        <input
+          autoFocus
+          type="text"
+          placeholder="שם המשתמשת של הצד השני"
+          value={partnerInput}
+          onChange={(e) => setPartnerInput(e.target.value)}
+          maxLength={30}
+        />
+        {formError && <div className="join-error">{formError}</div>}
+        <button type="submit" className="btn btn-primary">
+          התחילי שיחה
+        </button>
+        {registeredUsers.length > 0 && (
+          <div className="user-list">
+            <p className="user-list-title">או בחרי מהמשתמשות הרשומות:</p>
+            {registeredUsers.map((name) => (
               <button
+                key={name}
                 type="button"
-                className="modal-close"
-                onClick={() => setShowNewChat(false)}
-                aria-label="סגירה"
+                className="user-list-item"
+                onClick={() => {
+                  setPartnerInput(name);
+                  setActive({ id: null, type: "dm", name });
+                  setMessages([]);
+                  setShowNewChat(false);
+                  socket.emit("start-dm", { partner: name });
+                }}
               >
-                ✕
+                {name}
               </button>
-            </div>
-            <input
-              autoFocus
-              type="text"
-              placeholder="שם המשתמשת של הצד השני"
-              value={partnerInput}
-              onChange={(e) => setPartnerInput(e.target.value)}
-              maxLength={30}
-            />
-            {formError && <div className="join-error">{formError}</div>}
-            <button type="submit" className="btn btn-primary">
-              התחילי שיחה
-            </button>
-            {registeredUsers.length > 0 && (
-              <div className="user-list">
-                <p className="user-list-title">או בחרי מהמשתמשות הרשומות:</p>
-                {registeredUsers.map((name) => (
-                  <button
-                    key={name}
-                    type="button"
-                    className="user-list-item"
-                    onClick={() => {
-                      setPartnerInput(name);
-                      setActive({ id: null, type: "dm", name });
-                      setMessages([]);
-                      setShowNewChat(false);
-                      socket.emit("start-dm", { partner: name });
-                    }}
-                  >
-                    {name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </form>
-        </div>
-      )}
-
-      {showNewGroup && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setShowNewGroup(false);
-          }}
-        >
-          <form className="modal-panel" onSubmit={handleCreateGroup}>
-            <div className="modal-head">
-              <h3>קבוצה חדשה</h3>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setShowNewGroup(false)}
-                aria-label="סגירה"
-              >
-                ✕
-              </button>
-            </div>
-            <input
-              autoFocus
-              type="text"
-              placeholder="שם הקבוצה"
-              value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
-              maxLength={50}
-            />
-            <p className="user-list-title">בחרי משתתפות:</p>
-            <div className="user-list">
-              {registeredUsers.map((name) => (
-                <label key={name} className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={selectedMembers.has(name)}
-                    onChange={() => toggleMember(name)}
-                  />
-                  {name}
-                </label>
-              ))}
-              {registeredUsers.length === 0 && <p>אין עוד משתמשות רשומות.</p>}
-            </div>
-            {formError && <div className="join-error">{formError}</div>}
-            <button type="submit" className="btn btn-primary">
-              צרי קבוצה
-            </button>
-          </form>
-        </div>
-      )}
-
-      {showManageGroup && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closeManageGroup();
-          }}
-        >
-          <div className="modal-panel">
-            <div className="modal-head">
-              <h3>ניהול חברות בקבוצה</h3>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={closeManageGroup}
-                aria-label="סגירה"
-              >
-                ✕
-              </button>
-            </div>
-
-            {manageGroupError && <div className="join-error">{manageGroupError}</div>}
-
-            <div className="user-list">
-              {groupMembers.map((name) => (
-                <div key={name} className="checkbox-row" style={{ justifyContent: "space-between" }}>
-                  <span>{name}</span>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm btn-danger"
-                    disabled={manageGroupBusy}
-                    onClick={() => handleRemoveGroupMember(name)}
-                  >
-                    הסירי
-                  </button>
-                </div>
-              ))}
-              {groupMembers.length === 0 && <p>אין עדיין חברות בקבוצה.</p>}
-            </div>
-
-            <form className="modal-panel" onSubmit={handleAddGroupMember}>
-              <p className="user-list-title">הוספת חברה:</p>
-              <input
-                type="text"
-                list="registered-users-list"
-                placeholder="שם משתמשת"
-                value={addMemberName}
-                onChange={(e) => setAddMemberName(e.target.value)}
-                maxLength={30}
-              />
-              <datalist id="registered-users-list">
-                {registeredUsers
-                  .filter((name) => !groupMembers.includes(name))
-                  .map((name) => (
-                    <option key={name} value={name} />
-                  ))}
-              </datalist>
-              <button type="submit" className="btn btn-primary" disabled={manageGroupBusy}>
-                הוספה
-              </button>
-            </form>
+            ))}
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
-      {showChangePassword && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closeChangePassword();
-          }}
-        >
-          <form className="modal-panel" onSubmit={handleChangePassword}>
-            <div className="modal-head">
-              <h3>שינוי סיסמה</h3>
+      <Modal open={showNewGroup} onClose={() => setShowNewGroup(false)} onSubmit={handleCreateGroup} title="קבוצה חדשה">
+        <input
+          autoFocus
+          type="text"
+          placeholder="שם הקבוצה"
+          value={groupName}
+          onChange={(e) => setGroupName(e.target.value)}
+          maxLength={50}
+        />
+        <p className="user-list-title">בחרי משתתפות:</p>
+        <div className="user-list">
+          {registeredUsers.map((name) => (
+            <label key={name} className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={selectedMembers.has(name)}
+                onChange={() => toggleMember(name)}
+              />
+              {name}
+            </label>
+          ))}
+          {registeredUsers.length === 0 && <p>אין עוד משתמשות רשומות.</p>}
+        </div>
+        {formError && <div className="join-error">{formError}</div>}
+        <button type="submit" className="btn btn-primary">
+          צרי קבוצה
+        </button>
+      </Modal>
+
+      <Modal open={showManageGroup} onClose={closeManageGroup} title="ניהול חברות בקבוצה">
+        {manageGroupError && <div className="join-error">{manageGroupError}</div>}
+
+        <div className="user-list">
+          {groupMembers.map((name) => (
+            <div key={name} className="checkbox-row checkbox-row--split">
+              <span dir="auto">{name}</span>
               <button
                 type="button"
-                className="modal-close"
-                onClick={closeChangePassword}
-                aria-label="סגירה"
+                className="btn btn-ghost btn-sm btn-danger"
+                disabled={manageGroupBusy}
+                onClick={() => handleRemoveGroupMember(name)}
               >
-                ✕
+                הסירי
               </button>
             </div>
-
-            <input
-              autoFocus
-              type="password"
-              placeholder="סיסמה נוכחית"
-              value={currentPasswordInput}
-              onChange={(e) => setCurrentPasswordInput(e.target.value)}
-              maxLength={100}
-            />
-            <input
-              type="password"
-              placeholder="סיסמה חדשה (לפחות 6 תווים)"
-              value={newPasswordInput}
-              onChange={(e) => setNewPasswordInput(e.target.value)}
-              maxLength={100}
-            />
-            {changePasswordError && <div className="join-error">{changePasswordError}</div>}
-            {changePasswordSuccess && (
-              <div className="system-notice">הסיסמה עודכנה בהצלחה</div>
-            )}
-            <button type="submit" className="btn btn-primary" disabled={changePasswordBusy}>
-              {changePasswordBusy ? "מעדכנת..." : "עדכני סיסמה"}
-            </button>
-          </form>
+          ))}
+          {groupMembers.length === 0 && <p>אין עדיין חברות בקבוצה.</p>}
         </div>
-      )}
+
+        <form className="admin-filters" onSubmit={handleAddGroupMember}>
+          <input
+            type="text"
+            list="registered-users-list"
+            placeholder="שם משתמשת להוספה"
+            value={addMemberName}
+            onChange={(e) => setAddMemberName(e.target.value)}
+            maxLength={30}
+          />
+          <datalist id="registered-users-list">
+            {registeredUsers
+              .filter((name) => !groupMembers.includes(name))
+              .map((name) => (
+                <option key={name} value={name} />
+              ))}
+          </datalist>
+          <button type="submit" className="btn btn-primary" disabled={manageGroupBusy}>
+            הוספה
+          </button>
+        </form>
+      </Modal>
+
+      <Modal
+        open={showChangePassword}
+        onClose={closeChangePassword}
+        onSubmit={handleChangePassword}
+        title="שינוי סיסמה"
+      >
+        <input
+          autoFocus
+          type="password"
+          placeholder="סיסמה נוכחית"
+          value={currentPasswordInput}
+          onChange={(e) => setCurrentPasswordInput(e.target.value)}
+          maxLength={100}
+        />
+        <input
+          type="password"
+          placeholder="סיסמה חדשה (לפחות 6 תווים)"
+          value={newPasswordInput}
+          onChange={(e) => setNewPasswordInput(e.target.value)}
+          maxLength={100}
+        />
+        {changePasswordError && <div className="join-error">{changePasswordError}</div>}
+        {changePasswordSuccess && (
+          <div className="alert alert-success">הסיסמה עודכנה בהצלחה</div>
+        )}
+        <button type="submit" className="btn btn-primary" disabled={changePasswordBusy}>
+          {changePasswordBusy ? "מעדכנת..." : "עדכני סיסמה"}
+        </button>
+      </Modal>
+
+      <ConfirmDialog
+        open={confirmDeleteMessage != null}
+        title="מחיקת הודעה"
+        message="למחוק את ההודעה? הפעולה אינה הפיכה."
+        confirmLabel="מחיקה"
+        danger
+        onConfirm={confirmDeleteMessageNow}
+        onCancel={() => setConfirmDeleteMessage(null)}
+      />
     </>
   );
 }

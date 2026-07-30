@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { authedFetch } from "./api";
+import Modal from "./components/Modal";
+import ConfirmDialog from "./components/ConfirmDialog";
 
 const TASK_STATUS_LABELS = {
   todo: "לביצוע",
@@ -68,6 +70,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
   const [tasks, setTasks] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(true);
   const [tasksError, setTasksError] = useState("");
+  const [confirmDeleteTask, setConfirmDeleteTask] = useState(null);
   const [taskAssignedTo, setTaskAssignedTo] = useState("");
   const [taskStatus, setTaskStatus] = useState("");
   const [taskPriority, setTaskPriority] = useState("");
@@ -224,15 +227,6 @@ export default function AdminDashboard({ myUserId, myRole }) {
     setTaskFormError("");
   }
 
-  useEffect(() => {
-    if (!editingTask) return;
-    function handleKeyDown(e) {
-      if (e.key === "Escape") closeTaskForm();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [editingTask]);
-
   async function handleSaveTask(e) {
     e.preventDefault();
     if (!taskForm) return;
@@ -264,8 +258,13 @@ export default function AdminDashboard({ myUserId, myRole }) {
     }
   }
 
-  async function handleDeleteTask(task) {
-    if (!window.confirm(`למחוק את המשימה "${task.title}"? הפעולה אינה הפיכה.`)) return;
+  function handleDeleteTask(task) {
+    setConfirmDeleteTask(task);
+  }
+
+  async function confirmDeleteTaskNow() {
+    const task = confirmDeleteTask;
+    setConfirmDeleteTask(null);
     setTasksError("");
     const previous = tasks;
     setTasks((prev) => prev.filter((t) => t.id !== task.id));
@@ -402,34 +401,15 @@ export default function AdminDashboard({ myUserId, myRole }) {
 
         {tasksError && <div className="join-error">{tasksError}</div>}
 
-        {editingTask && taskForm && (
-          <div
-            className="admin-modal-backdrop"
-            onMouseDown={(e) => {
-              if (e.target === e.currentTarget) closeTaskForm();
-            }}
-          >
-            <form
-              className="admin-modal"
-              onSubmit={handleSaveTask}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="task-form-title"
-            >
-              <div className="admin-modal-head">
-                <h3 id="task-form-title">
-                  {editingTask === "new" ? "משימה חדשה" : "עריכת משימה"}
-                </h3>
-                <button
-                  type="button"
-                  className="admin-modal-close"
-                  onClick={closeTaskForm}
-                  aria-label="סגירה"
-                >
-                  ✕
-                </button>
-              </div>
-
+        <Modal
+          open={Boolean(editingTask && taskForm)}
+          onClose={closeTaskForm}
+          onSubmit={handleSaveTask}
+          title={editingTask === "new" ? "משימה חדשה" : "עריכת משימה"}
+          maxWidth={440}
+        >
+          {taskForm && (
+            <>
               {taskFormError && <div className="join-error">{taskFormError}</div>}
 
               <label>
@@ -486,8 +466,10 @@ export default function AdminDashboard({ myUserId, myRole }) {
                     ))}
                   </select>
                 </label>
-                <label>
-                  משויכת ל-
+                {/* Not a <label> wrapping <label>s (that made clicking the
+                    heading toggle the first checkbox) - a plain heading. */}
+                <div>
+                  <span className="admin-filter-label">משויכת ל-</span>
                   <div className="user-list task-assignee-list">
                     {employees.map((emp) => (
                       <label key={emp.id} className="checkbox-row">
@@ -501,7 +483,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
                     ))}
                     {employees.length === 0 && <p>אין עובדות זמינות</p>}
                   </div>
-                </label>
+                </div>
               </div>
 
               <div className="admin-modal-actions">
@@ -512,9 +494,19 @@ export default function AdminDashboard({ myUserId, myRole }) {
                   {taskFormSaving ? "שומר…" : "שמירה"}
                 </button>
               </div>
-            </form>
-          </div>
-        )}
+            </>
+          )}
+        </Modal>
+
+        <ConfirmDialog
+          open={confirmDeleteTask != null}
+          title="מחיקת משימה"
+          message={confirmDeleteTask ? `למחוק את המשימה "${confirmDeleteTask.title}"? הפעולה אינה הפיכה.` : ""}
+          confirmLabel="מחיקה"
+          danger
+          onConfirm={confirmDeleteTaskNow}
+          onCancel={() => setConfirmDeleteTask(null)}
+        />
 
         <div className="admin-table-wrap">
           <table className="admin-table">
