@@ -5,7 +5,7 @@ import TimeClock from "./TimeClock";
 import AdminDashboard from "./AdminDashboard";
 import Sidebar from "./Sidebar";
 
-const socket = io({ autoConnect: false });
+const socket = io(import.meta.env.VITE_SOCKET_URL || undefined, { autoConnect: false });
 
 function formatTime(iso) {
   const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");

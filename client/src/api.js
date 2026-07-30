@@ -1,5 +1,7 @@
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
 export async function api(path, body) {
-  const res = await fetch(`/api/${path}`, {
+  const res = await fetch(`${API_BASE}/api/${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -11,7 +13,7 @@ export async function api(path, body) {
 
 export async function authedFetch(path, options = {}) {
   const token = localStorage.getItem("chat-token");
-  const res = await fetch(`/api/${path}`, {
+  const res = await fetch(`${API_BASE}/api/${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -28,7 +30,7 @@ export async function uploadFile(path, file) {
   const token = localStorage.getItem("chat-token");
   const formData = new FormData();
   formData.append("file", file);
-  const res = await fetch(`/api/${path}`, {
+  const res = await fetch(`${API_BASE}/api/${path}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: formData,

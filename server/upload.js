@@ -1,22 +1,40 @@
 const path = require("path");
 const crypto = require("crypto");
-const fs = require("fs");
 const multer = require("multer");
+const { createClient } = require("@supabase/supabase-js");
 
-const uploadsDir = path.join(__dirname, "uploads");
-fs.mkdirSync(uploadsDir, { recursive: true });
+const BUCKET = process.env.SUPABASE_BUCKET || "uploads";
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadsDir),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).slice(0, 20);
-    cb(null, `${crypto.randomUUID()}${ext}`);
-  },
-});
+let supabase = null;
+function getSupabase() {
+  if (!supabase) {
+    supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  }
+  return supabase;
+}
 
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-module.exports = { upload, uploadsDir };
+async function saveToStorage(file) {
+  const ext = path.extname(file.originalname).slice(0, 20);
+  const filename = `${crypto.randomUUID()}${ext}`;
+  const { error } = await getSupabase()
+    .storage.from(BUCKET)
+    .upload(filename, file.buffer, { contentType: file.mimetype });
+  if (error) throw error;
+  return filename;
+}
+
+async function deleteFromStorage(filename) {
+  await getSupabase().storage.from(BUCKET).remove([filename]);
+}
+
+function getPublicUrl(filename) {
+  if (!filename) return null;
+  return getSupabase().storage.from(BUCKET).getPublicUrl(filename).data.publicUrl;
+}
+
+module.exports = { upload, saveToStorage, deleteFromStorage, getPublicUrl };
