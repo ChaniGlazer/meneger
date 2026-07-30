@@ -1615,6 +1615,11 @@ button, input, select, textarea {
   margin-bottom: var(--space-2);
 }
 
+.task-due.overdue {
+  color: var(--danger);
+  font-weight: var(--weight-medium);
+}
+
 .task-attachments {
   margin-bottom: var(--space-2);
 }
@@ -1637,21 +1642,12 @@ button, input, select, textarea {
   width: 100%;
 }
 
+/* Layout only now - appearance comes from .btn.btn-secondary, applied
+   alongside this class in the JSX. */
 .task-chat-button {
   width: 100%;
   margin-top: var(--space-2);
-  background: var(--brand-tint);
-  color: var(--brand-fg-on-tint);
-  border: 1px solid var(--border-brand);
-  border-radius: var(--radius-md);
-  padding: var(--space-1) var(--space-2);
   font-size: var(--text-xs);
-  cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-out);
-}
-
-.task-chat-button:hover {
-  background: var(--brand-tint-hover);
 }
 
 /* Unmaintained: mobile is explicitly out of scope. Left inert (no effect above

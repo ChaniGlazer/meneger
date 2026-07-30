@@ -98,6 +98,7 @@ export default function App() {
   const [tasks, setTasks] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState("");
+  const [uploadingTaskId, setUploadingTaskId] = useState(null);
 
   // Lifted out of TimeClock.jsx so the inbox home screen and the top bar
   // can both reflect the same shift without owning two copies of the state.
@@ -297,6 +298,7 @@ export default function App() {
 
   async function handleUploadTaskAttachment(taskId, file) {
     setTasksError("");
+    setUploadingTaskId(taskId);
     try {
       const data = await uploadFile(`tasks/${taskId}/attachments`, file);
       setTasks((prev) =>
@@ -306,6 +308,8 @@ export default function App() {
       );
     } catch (err) {
       setTasksError(err.message);
+    } finally {
+      setUploadingTaskId(null);
     }
   }
 
@@ -866,76 +870,93 @@ export default function App() {
         <main className="tasks-board">
           {TASK_STATUS_COLUMNS.map((col) => {
             const columnTasks = tasks.filter((t) => t.status === col.key);
+            const headingId = `tasks-column-${col.key}-heading`;
             return (
-              <div key={col.key} className="tasks-column">
+              <section key={col.key} className="tasks-column" aria-labelledby={headingId}>
                 <div className="tasks-column-header">
-                  <span>{col.label}</span>
+                  <span id={headingId}>{col.label}</span>
                   <span className="tasks-column-count">{columnTasks.length}</span>
                 </div>
                 <div className="tasks-column-body">
-                  {columnTasks.map((task) => (
-                    <div key={task.id} className="task-card">
-                      <span className={`task-priority priority-${task.priority}`}>
-                        {TASK_PRIORITY_LABELS[task.priority] || task.priority}
-                      </span>
-                      <div className="task-title">{task.title}</div>
-                      {task.description && (
-                        <div className="task-description">{task.description}</div>
-                      )}
-                      {task.due_date && <div className="task-due">יעד: {task.due_date}</div>}
-                      {task.attachments?.length > 0 && (
-                        <div className="task-attachments">
-                          {task.attachments.map((att) => (
-                            <AttachmentView key={att.id} attachment={att} />
-                          ))}
+                  {columnTasks.map((task) => {
+                    const isOverdue =
+                      task.status !== "done" &&
+                      task.due_date &&
+                      new Date(task.due_date) < new Date(new Date().toDateString());
+                    return (
+                      <div key={task.id} className="task-card">
+                        <span className={`task-priority priority-${task.priority}`}>
+                          {TASK_PRIORITY_LABELS[task.priority] || task.priority}
+                        </span>
+                        <div className="task-title" dir="auto">
+                          {task.title}
                         </div>
-                      )}
-                      <label className="attach-button task-attach-button">
-                        צרפי קובץ
-                        <input
-                          type="file"
-                          hidden
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            e.target.value = "";
-                            if (file) handleUploadTaskAttachment(task.id, file);
-                          }}
-                        />
-                      </label>
-                      <select
-                        className="task-status-select"
-                        value={task.status}
-                        onChange={(e) => handleUpdateTaskStatus(task.id, e.target.value)}
-                      >
-                        {TASK_STATUS_COLUMNS.map((s) => (
-                          <option key={s.key} value={s.key}>
-                            {s.label}
-                          </option>
-                        ))}
-                      </select>
-                      {task.conversation_id && (
-                        <button
-                          type="button"
-                          className="task-chat-button"
-                          onClick={() =>
-                            openConversation({
-                              id: task.conversation_id,
-                              type: "group",
-                              name: task.title,
-                              isTask: true,
-                            })
-                          }
+                        {task.description && (
+                          <div className="task-description" dir="auto">
+                            {task.description}
+                          </div>
+                        )}
+                        {task.due_date && (
+                          <div className={`task-due${isOverdue ? " overdue" : ""}`}>
+                            יעד: {task.due_date}
+                          </div>
+                        )}
+                        {task.attachments?.length > 0 && (
+                          <div className="task-attachments">
+                            {task.attachments.map((att) => (
+                              <AttachmentView key={att.id} attachment={att} />
+                            ))}
+                          </div>
+                        )}
+                        <label className="attach-button task-attach-button">
+                          {uploadingTaskId === task.id ? "מעלה…" : "צרפי קובץ"}
+                          <input
+                            type="file"
+                            hidden
+                            disabled={uploadingTaskId === task.id}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = "";
+                              if (file) handleUploadTaskAttachment(task.id, file);
+                            }}
+                          />
+                        </label>
+                        <select
+                          className="task-status-select"
+                          aria-label={`סטטוס המשימה "${task.title}"`}
+                          value={task.status}
+                          onChange={(e) => handleUpdateTaskStatus(task.id, e.target.value)}
                         >
-                          פתח שיחת משימה
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                          {TASK_STATUS_COLUMNS.map((s) => (
+                            <option key={s.key} value={s.key}>
+                              {s.label}
+                            </option>
+                          ))}
+                        </select>
+                        {task.conversation_id && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary task-chat-button"
+                            onClick={() =>
+                              openConversation({
+                                id: task.conversation_id,
+                                type: "group",
+                                name: task.title,
+                                isTask: true,
+                              })
+                            }
+                          >
+                            פתיחת שיחת משימה
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                   {columnTasks.length === 0 && !tasksLoading && (
                     <p className="empty-hint">אין משימות</p>
                   )}
                 </div>
-              </div>
+              </section>
             );
           })}
         </main>
