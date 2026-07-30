@@ -111,6 +111,7 @@ export default function App() {
   const [authBusy, setAuthBusy] = useState(false);
 
   const [conversations, setConversations] = useState([]);
+  const [conversationsLoading, setConversationsLoading] = useState(true);
   const [conversationsError, setConversationsError] = useState("");
   const [unreadCounts, setUnreadCounts] = useState({});
   const [registeredUsers, setRegisteredUsers] = useState([]);
@@ -199,7 +200,8 @@ export default function App() {
   function fetchConversations() {
     authedFetch("conversations")
       .then((data) => setConversations(data.conversations))
-      .catch(() => setConversationsError("לא ניתן היה לטעון את רשימת השיחות"));
+      .catch(() => setConversationsError("לא ניתן היה לטעון את רשימת השיחות"))
+      .finally(() => setConversationsLoading(false));
   }
 
   function fetchUsers() {
@@ -715,18 +717,25 @@ export default function App() {
   }
 
   if (checkingSession) {
-    return <div className="screen" />;
+    return (
+      <div className="screen">
+        <div className="app-spinner" role="status" aria-label="טוענת..." />
+      </div>
+    );
   }
 
   if (stage === "auth") {
     return (
       <div className="screen">
         <form className="join-card" onSubmit={handleAuthSubmit}>
+          <img className="join-card-logo" src="/brand/codebloom.svg" alt="" aria-hidden="true" />
           <h1>מערכת ניהול עובדות</h1>
           <p className="join-card-subtitle">משימות, נוכחות ותקשורת צוותית במקום אחד</p>
-          <div className="auth-tabs">
+          <div className="auth-tabs" role="tablist">
             <button
               type="button"
+              role="tab"
+              aria-selected={authMode === "login"}
               className={authMode === "login" ? "active" : ""}
               onClick={() => {
                 setAuthMode("login");
@@ -737,6 +746,8 @@ export default function App() {
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={authMode === "register"}
               className={authMode === "register" ? "active" : ""}
               onClick={() => {
                 setAuthMode("register");
@@ -773,7 +784,9 @@ export default function App() {
           />
           {authError && <div className="join-error">{authError}</div>}
           <button type="submit" disabled={authBusy}>
-            {authMode === "login" ? "התחברי" : "הירשמי"}
+            {authBusy
+              ? authMode === "login" ? "מתחברת…" : "נרשמת…"
+              : authMode === "login" ? "התחברי" : "הירשמי"}
           </button>
         </form>
       </div>
@@ -1096,6 +1109,7 @@ export default function App() {
           stage={stage}
           activeConversationId={active?.id ?? null}
           conversations={conversations}
+          conversationsLoading={conversationsLoading}
           conversationsError={conversationsError}
           unreadCounts={unreadCounts}
           onSelectConversation={openConversation}

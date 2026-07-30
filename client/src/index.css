@@ -188,6 +188,20 @@ button, input, select, textarea {
   padding: var(--space-4);
 }
 
+/* Replaces a blank flash while a stored session token is being verified. */
+.app-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  border: 3px solid var(--border-default);
+  border-top-color: var(--brand);
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ============================================================================
    Time clock bar
    ========================================================================== */
@@ -211,10 +225,19 @@ button, input, select, textarea {
 }
 
 .app-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-weight: var(--weight-semibold);
   font-size: var(--text-sm);
   letter-spacing: .01em;
   color: var(--fg-on-inverse);
+}
+
+.app-brand-logo {
+  width: var(--space-6);
+  height: var(--space-6);
+  flex-shrink: 0;
 }
 
 .time-clock-widget {
@@ -273,6 +296,13 @@ button, input, select, textarea {
   max-width: 380px;
   box-shadow: var(--shadow-lg);
   text-align: center;
+}
+
+.join-card-logo {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto var(--space-4);
+  display: block;
 }
 
 .join-card h1 {
@@ -617,7 +647,30 @@ button, input, select, textarea {
   padding: 0 var(--space-1) var(--space-1);
 }
 
+.sidebar-skeleton {
+  padding: var(--space-2);
+}
+
+.sidebar-skeleton-row {
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--ink-100) 25%, var(--ink-50) 37%, var(--ink-100) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  margin-bottom: var(--space-3);
+}
+
+@keyframes skeleton-shimmer {
+  from { background-position: 100% 50%; }
+  to   { background-position: 0 50%; }
+}
+
 .sidebar-conversation-row {
+  display: block;
+  width: 100%;
+  border: none;
+  background: none;
+  text-align: start;
   padding: var(--space-2);
   border-radius: var(--radius-md);
   cursor: pointer;

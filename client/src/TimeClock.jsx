@@ -70,13 +70,16 @@ export default function TimeClock() {
 
   return (
     <div className="time-clock-bar">
-      <div className="app-brand">מערכת ניהול עובדות</div>
+      <div className="app-brand">
+        <img className="app-brand-logo" src="/brand/codebloom.svg" alt="" aria-hidden="true" />
+        מערכת ניהול עובדות
+      </div>
 
       {!loading && (
         <div className="time-clock-widget">
           {openLog ? (
             <>
-              <span className="time-clock-status">
+              <span className="time-clock-status" role="status" aria-live="polite">
                 נוכחת מ-{formatClockTime(openLog.clock_in)} ·{" "}
                 {formatElapsed(now - toDate(openLog.clock_in).getTime())}
               </span>
@@ -86,19 +89,21 @@ export default function TimeClock() {
                 onClick={handleClockOut}
                 disabled={busy}
               >
-                יציאה
+                סיום עבודה
               </button>
             </>
           ) : (
             <>
-              <span className="time-clock-status">לא נרשמה כניסה</span>
+              <span className="time-clock-status" role="status" aria-live="polite">
+                עוד לא התחלת לעבוד היום
+              </span>
               <button
                 type="button"
                 className="time-clock-button clock-in"
                 onClick={handleClockIn}
                 disabled={busy}
               >
-                כניסה
+                התחלת עבודה
               </button>
             </>
           )}

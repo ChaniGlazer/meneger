@@ -12,6 +12,7 @@ export default function Sidebar({
   stage,
   activeConversationId,
   conversations,
+  conversationsLoading,
   conversationsError,
   unreadCounts,
   onSelectConversation,
@@ -30,7 +31,7 @@ export default function Sidebar({
           {username.slice(0, 1).toUpperCase()}
         </div>
         <div>
-          <div className="sidebar-username">{username}</div>
+          <div className="sidebar-username" dir="auto">{username}</div>
           <div className="sidebar-role-badge">
             {myRole === "admin" ? "מנהלת" : myRole === "team_lead" ? "ראשת צוות" : "עובדת"}
           </div>
@@ -41,17 +42,28 @@ export default function Sidebar({
         <button
           type="button"
           className={stage === "inbox" || stage === "chat" ? "active" : ""}
+          aria-current={stage === "inbox" || stage === "chat" ? "page" : undefined}
           onClick={onEnterInbox}
         >
           <span className="sidebar-nav-icon" aria-hidden="true">💬</span>
           תקשורת צוותית
         </button>
-        <button type="button" className={stage === "tasks" ? "active" : ""} onClick={onEnterTasks}>
+        <button
+          type="button"
+          className={stage === "tasks" ? "active" : ""}
+          aria-current={stage === "tasks" ? "page" : undefined}
+          onClick={onEnterTasks}
+        >
           <span className="sidebar-nav-icon" aria-hidden="true">📋</span>
           המשימות שלי
         </button>
         {(myRole === "admin" || myRole === "team_lead") && (
-          <button type="button" className={stage === "admin" ? "active" : ""} onClick={onEnterAdmin}>
+          <button
+            type="button"
+            className={stage === "admin" ? "active" : ""}
+            aria-current={stage === "admin" ? "page" : undefined}
+            onClick={onEnterAdmin}
+          >
             <span className="sidebar-nav-icon" aria-hidden="true">⚙️</span>
             {myRole === "admin" ? "מסך ניהול" : "ניהול הצוות"}
           </button>
@@ -75,39 +87,51 @@ export default function Sidebar({
       {conversationsError && <div className="sidebar-error">{conversationsError}</div>}
 
       <div className="sidebar-conversations">
-        {conversations.map((row) => (
-          <div
-            key={row.id}
-            className={`sidebar-conversation-row${row.id === activeConversationId ? " active" : ""}`}
-            onClick={() => onSelectConversation(row)}
-          >
-            <div className="sidebar-conversation-main">
-              <span className="sidebar-conversation-name">
-                {row.isTask ? (
-                  <span className="conv-type-tag task-tag">משימה</span>
-                ) : (
-                  row.type === "group" && <span className="conv-type-tag">קבוצה</span>
-                )}
-                {row.name}
-              </span>
-              {unreadCounts[row.id] > 0 && (
-                <span className="unread-badge">{unreadCounts[row.id]}</span>
-              )}
-            </div>
-            {row.lastMessage && (
-              <div className="sidebar-conversation-preview">
-                <span>
-                  {row.lastMessage.username}: {row.lastMessage.text}
-                </span>
-                <span className="sidebar-conversation-time">
-                  {formatConversationTime(row.lastMessage.createdAt)}
-                </span>
-              </div>
-            )}
+        {conversationsLoading ? (
+          <div className="sidebar-skeleton" aria-hidden="true">
+            <div className="sidebar-skeleton-row" style={{ width: "80%" }} />
+            <div className="sidebar-skeleton-row" style={{ width: "60%" }} />
+            <div className="sidebar-skeleton-row" style={{ width: "70%" }} />
           </div>
-        ))}
-        {conversations.length === 0 && !conversationsError && (
-          <p className="empty-hint">אין עדיין שיחות</p>
+        ) : (
+          <>
+            {conversations.map((row) => (
+              <button
+                type="button"
+                key={row.id}
+                className={`sidebar-conversation-row${row.id === activeConversationId ? " active" : ""}`}
+                aria-current={row.id === activeConversationId ? "true" : undefined}
+                onClick={() => onSelectConversation(row)}
+              >
+                <div className="sidebar-conversation-main">
+                  <span className="sidebar-conversation-name" dir="auto">
+                    {row.isTask ? (
+                      <span className="conv-type-tag task-tag">משימה</span>
+                    ) : (
+                      row.type === "group" && <span className="conv-type-tag">קבוצה</span>
+                    )}
+                    {row.name}
+                  </span>
+                  {unreadCounts[row.id] > 0 && (
+                    <span className="unread-badge">{unreadCounts[row.id]}</span>
+                  )}
+                </div>
+                {row.lastMessage && (
+                  <div className="sidebar-conversation-preview">
+                    <span dir="auto">
+                      {row.lastMessage.username}: {row.lastMessage.text}
+                    </span>
+                    <span className="sidebar-conversation-time">
+                      {formatConversationTime(row.lastMessage.createdAt)}
+                    </span>
+                  </div>
+                )}
+              </button>
+            ))}
+            {conversations.length === 0 && !conversationsError && (
+              <p className="empty-hint">אין עדיין שיחות</p>
+            )}
+          </>
         )}
       </div>
 
