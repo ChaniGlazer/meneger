@@ -21,6 +21,12 @@ const {
   listTeamMembers,
   updateUserRole,
   updateUserTeamLead,
+  listTeams,
+  createTeam,
+  renameTeam,
+  deleteTeam,
+  getTeamMembers,
+  setUserTeamId,
   countUsers,
   findInvite,
   addInvite,
@@ -429,7 +435,26 @@ app.post(
       assigneeUsers.push(user);
     }
 
-    const chatMembers = [...new Set([req.username, ...assigneeUsers.map((u) => u.username)])];
+    let teamId = null;
+    let teamMembers = [];
+    if (req.body?.team_id != null && req.body.team_id !== "") {
+      teamId = parseId(req.body.team_id);
+      if (teamId === null) {
+        return res.status(400).json({ error: "צוות לא תקין" });
+      }
+      teamMembers = await getTeamMembers(teamId);
+      if (teamMembers.length === 0) {
+        return res.status(400).json({ error: "הצוות לא נמצא" });
+      }
+    }
+
+    const chatMembers = [
+      ...new Set([
+        req.username,
+        ...assigneeUsers.map((u) => u.username),
+        ...teamMembers.map((u) => u.username),
+      ]),
+    ];
     const conversationId = await createGroupConversation(title.slice(0, 50), chatMembers);
     for (const [socketId, client] of clients) {
       if (chatMembers.includes(client.username)) {
@@ -445,6 +470,7 @@ app.post(
       conversation_id: conversationId,
       priority,
       status,
+      team_id: teamId,
     });
     res.status(201).json({ task: serializeTask(task) });
   })
@@ -454,14 +480,14 @@ app.get(
   "/api/tasks",
   requireAuth,
   ah(async (req, res) => {
-    const filters = {};
-    if (req.query.assigned_to != null) {
-      const assignedTo = parseId(req.query.assigned_to);
-      if (assignedTo === null) {
-        return res.status(400).json({ error: "assigned_to לא תקין" });
-      }
-      filters.assigned_to = assignedTo;
-    }
+    // Scoped to the requesting user's own tasks (assignee or her team) —
+    // any assigned_to the client sends is ignored, since this route must
+    // never be usable to browse another employee's tasks.
+    const currentUser = await findUser(req.username);
+    const filters = {
+      visibleToUserId: currentUser.id,
+      visibleToTeamId: currentUser.team_id,
+    };
     if (req.query.status) {
       if (!TASK_STATUSES.includes(req.query.status)) {
         return res
@@ -502,7 +528,7 @@ app.patch(
     const existing = id !== null && (await getTaskById(id));
     if (!existing) return res.status(404).json({ error: "המשימה לא נמצאה" });
 
-    const editorOnlyFields = ["title", "description", "due_date", "priority", "assigned_to"];
+    const editorOnlyFields = ["title", "description", "due_date", "priority", "assigned_to", "team_id"];
     const requestsEditorFields = editorOnlyFields.some((f) => req.body?.[f] !== undefined);
     if (requestsEditorFields) {
       const requestingUser = await findUser(req.username);
@@ -561,10 +587,28 @@ app.patch(
       fields.assignee_ids = ids;
     }
 
+    let newTeamMembers = [];
+    if (req.body?.team_id !== undefined) {
+      if (req.body.team_id == null || req.body.team_id === "") {
+        fields.team_id = null;
+      } else {
+        const teamId = parseId(req.body.team_id);
+        if (teamId === null) {
+          return res.status(400).json({ error: "צוות לא תקין" });
+        }
+        newTeamMembers = await getTeamMembers(teamId);
+        if (newTeamMembers.length === 0) {
+          return res.status(400).json({ error: "הצוות לא נמצא" });
+        }
+        fields.team_id = teamId;
+      }
+    }
+
     const task = await updateTask(id, fields);
 
-    if (newAssigneeUsers && task.conversation_id) {
-      for (const user of newAssigneeUsers) {
+    const usersToJoinChat = [...(newAssigneeUsers || []), ...newTeamMembers];
+    if (usersToJoinChat.length > 0 && task.conversation_id) {
+      for (const user of usersToJoinChat) {
         if (!(await isMember(task.conversation_id, user.username))) {
           await addConversationMember(task.conversation_id, user.username);
           for (const [socketId, client] of clients) {
@@ -876,7 +920,128 @@ app.patch(
       await updateUserTeamLead(id, teamLeadId);
     }
 
+    if (req.body?.team_id !== undefined) {
+      let teamId = null;
+      if (req.body.team_id !== null && req.body.team_id !== "") {
+        teamId = parseId(req.body.team_id);
+        const teams = teamId !== null ? await listTeams() : [];
+        if (teamId === null || !teams.some((t) => t.id === teamId)) {
+          return res.status(400).json({ error: "יש לבחור צוות תקין" });
+        }
+      }
+      await setUserTeamId(id, teamId);
+    }
+
     res.json({ user: await findUserById(id) });
+  })
+);
+
+app.get(
+  "/api/admin/teams",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    res.json({ teams: await listTeams() });
+  })
+);
+
+app.post(
+  "/api/admin/teams",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    const name = String(req.body?.name || "").trim().slice(0, 100);
+    if (!name) return res.status(400).json({ error: "יש להזין שם צוות" });
+    try {
+      const team = await createTeam(name);
+      res.status(201).json({ team });
+    } catch (err) {
+      if (err.code === "23505") {
+        return res.status(400).json({ error: "כבר קיים צוות בשם הזה" });
+      }
+      throw err;
+    }
+  })
+);
+
+app.patch(
+  "/api/admin/teams/:id",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    const id = parseId(req.params.id);
+    if (id === null) return res.status(404).json({ error: "הצוות לא נמצא" });
+    const name = String(req.body?.name || "").trim().slice(0, 100);
+    if (!name) return res.status(400).json({ error: "יש להזין שם צוות" });
+    try {
+      const team = await renameTeam(id, name);
+      if (!team) return res.status(404).json({ error: "הצוות לא נמצא" });
+      res.json({ team });
+    } catch (err) {
+      if (err.code === "23505") {
+        return res.status(400).json({ error: "כבר קיים צוות בשם הזה" });
+      }
+      throw err;
+    }
+  })
+);
+
+app.delete(
+  "/api/admin/teams/:id",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    const id = parseId(req.params.id);
+    if (id === null) return res.status(404).json({ error: "הצוות לא נמצא" });
+    await deleteTeam(id);
+    res.json({ ok: true });
+  })
+);
+
+app.get(
+  "/api/admin/teams/:id/members",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    const id = parseId(req.params.id);
+    if (id === null) return res.status(404).json({ error: "הצוות לא נמצא" });
+    res.json({ members: await getTeamMembers(id) });
+  })
+);
+
+app.post(
+  "/api/admin/teams/:id/members",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    const id = parseId(req.params.id);
+    const userId = parseId(req.body?.user_id);
+    if (id === null || userId === null) {
+      return res.status(400).json({ error: "בקשה לא תקינה" });
+    }
+    const user = await findUserById(userId);
+    if (!user) return res.status(404).json({ error: "משתמשת לא נמצאה" });
+    await setUserTeamId(userId, id);
+    res.json({ members: await getTeamMembers(id) });
+  })
+);
+
+app.delete(
+  "/api/admin/teams/:id/members/:userId",
+  requireAuth,
+  requireAdmin,
+  ah(async (req, res) => {
+    const id = parseId(req.params.id);
+    const userId = parseId(req.params.userId);
+    if (id === null || userId === null) {
+      return res.status(400).json({ error: "בקשה לא תקינה" });
+    }
+    const user = await findUserById(userId);
+    if (!user || user.team_id !== id) {
+      return res.status(404).json({ error: "המשתמשת אינה בצוות זה" });
+    }
+    await setUserTeamId(userId, null);
+    res.json({ members: await getTeamMembers(id) });
   })
 );
 

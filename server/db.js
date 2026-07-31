@@ -30,6 +30,15 @@ async function init() {
   await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS team_lead_id INTEGER REFERENCES users(id)`);
 
   await query(`
+    CREATE TABLE IF NOT EXISTS teams (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id)`);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS invited_emails (
       email CITEXT PRIMARY KEY,
       invited_by CITEXT,
@@ -80,6 +89,7 @@ async function init() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  await query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id)`);
 
   await query(`
     CREATE TABLE IF NOT EXISTS task_assignees (
@@ -156,7 +166,7 @@ async function updateUserPassword(username, passwordHash) {
 
 async function findUser(username) {
   const { rows } = await query(
-    "SELECT id, username, password_hash, role FROM users WHERE username = $1",
+    "SELECT id, username, password_hash, role, team_id FROM users WHERE username = $1",
     [username]
   );
   return rows[0];
@@ -202,7 +212,7 @@ async function markInviteUsed(email, userId) {
 
 async function findUserById(id) {
   const { rows } = await query(
-    "SELECT id, username, role, team_lead_id FROM users WHERE id = $1",
+    "SELECT id, username, role, team_lead_id, team_id FROM users WHERE id = $1",
     [id]
   );
   return rows[0];
@@ -210,9 +220,11 @@ async function findUserById(id) {
 
 async function listAllUsers() {
   const { rows } = await query(
-    `SELECT u.id, u.username, u.role, u.team_lead_id, tl.username AS team_lead_username
+    `SELECT u.id, u.username, u.role, u.team_lead_id, tl.username AS team_lead_username,
+       u.team_id, t.name AS team_name
      FROM users u
      LEFT JOIN users tl ON tl.id = u.team_lead_id
+     LEFT JOIN teams t ON t.id = u.team_id
      ORDER BY u.username`
   );
   return rows;
@@ -224,6 +236,52 @@ async function listTeamMembers(teamLeadId) {
     [teamLeadId]
   );
   return rows;
+}
+
+async function listTeams() {
+  const { rows } = await query(
+    `SELECT t.id, t.name, t.created_at, COUNT(u.id)::int AS member_count
+     FROM teams t
+     LEFT JOIN users u ON u.team_id = t.id
+     GROUP BY t.id
+     ORDER BY t.name`
+  );
+  return rows;
+}
+
+async function createTeam(name) {
+  const { rows } = await query(
+    "INSERT INTO teams (name) VALUES ($1) RETURNING id, name, created_at",
+    [name]
+  );
+  return rows[0];
+}
+
+async function renameTeam(id, name) {
+  const { rows } = await query(
+    "UPDATE teams SET name = $1 WHERE id = $2 RETURNING id, name, created_at",
+    [name, id]
+  );
+  return rows[0];
+}
+
+async function deleteTeam(id) {
+  await query("UPDATE users SET team_id = NULL WHERE team_id = $1", [id]);
+  await query("UPDATE tasks SET team_id = NULL WHERE team_id = $1", [id]);
+  await query("DELETE FROM teams WHERE id = $1", [id]);
+}
+
+async function getTeamMembers(teamId) {
+  const { rows } = await query(
+    "SELECT id, username, role FROM users WHERE team_id = $1 ORDER BY username",
+    [teamId]
+  );
+  return rows;
+}
+
+async function setUserTeamId(userId, teamId) {
+  await query("UPDATE users SET team_id = $1 WHERE id = $2", [teamId, userId]);
+  return findUserById(userId);
 }
 
 async function updateUserRole(id, role) {
@@ -270,6 +328,14 @@ async function attachAssigneesToTasks(tasks) {
   return tasks.map((t) => ({ ...t, assignees: byTask.get(t.id) || [] }));
 }
 
+async function attachTeamNamesToTasks(tasks) {
+  const ids = [...new Set(tasks.map((t) => t.team_id).filter(Boolean))];
+  if (ids.length === 0) return tasks.map((t) => ({ ...t, team_name: null }));
+  const { rows } = await query("SELECT id, name FROM teams WHERE id = ANY($1::int[])", [ids]);
+  const byId = new Map(rows.map((r) => [r.id, r.name]));
+  return tasks.map((t) => ({ ...t, team_name: t.team_id ? byId.get(t.team_id) || null : null }));
+}
+
 async function setTaskAssignees(taskId, userIds) {
   await query("DELETE FROM task_assignees WHERE task_id = $1", [taskId]);
   for (const userId of userIds) {
@@ -295,10 +361,10 @@ async function deleteTask(id) {
   await query("DELETE FROM tasks WHERE id = $1", [id]);
 }
 
-async function createTask({ title, description, assignee_ids, due_date, priority, status, conversation_id }) {
+async function createTask({ title, description, assignee_ids, due_date, priority, status, conversation_id, team_id }) {
   const { rows } = await query(
-    `INSERT INTO tasks (title, description, due_date, priority, status, conversation_id)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    `INSERT INTO tasks (title, description, due_date, priority, status, conversation_id, team_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
     [
       title,
       description ?? null,
@@ -306,6 +372,7 @@ async function createTask({ title, description, assignee_ids, due_date, priority
       priority || "medium",
       status || "todo",
       conversation_id ?? null,
+      team_id ?? null,
     ]
   );
   await setTaskAssignees(rows[0].id, assignee_ids || []);
@@ -317,15 +384,26 @@ async function getTaskById(id) {
   if (!rows[0]) return undefined;
   const [withAttachments] = await attachAttachmentsToTasks([rows[0]]);
   const [withAssignees] = await attachAssigneesToTasks([withAttachments]);
-  return withAssignees;
+  const [withTeam] = await attachTeamNamesToTasks([withAssignees]);
+  return withTeam;
 }
 
-async function listTasks({ assigned_to, status, priority } = {}) {
+// Used by the plain (non-admin) /api/tasks route: a task is visible to a
+// user if she's an explicit assignee OR the task is assigned to her team.
+async function listTasks({ visibleToUserId, visibleToTeamId, status, priority } = {}) {
   const clauses = [];
   const params = [];
-  if (assigned_to != null) {
-    params.push(assigned_to);
-    clauses.push(`EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = tasks.id AND ta.user_id = $${params.length})`);
+  if (visibleToUserId != null) {
+    const visibilityParts = [];
+    params.push(visibleToUserId);
+    visibilityParts.push(
+      `EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = tasks.id AND ta.user_id = $${params.length})`
+    );
+    if (visibleToTeamId != null) {
+      params.push(visibleToTeamId);
+      visibilityParts.push(`tasks.team_id = $${params.length}`);
+    }
+    clauses.push(`(${visibilityParts.join(" OR ")})`);
   }
   if (status) {
     params.push(status);
@@ -338,7 +416,8 @@ async function listTasks({ assigned_to, status, priority } = {}) {
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const { rows } = await query(`SELECT * FROM tasks ${where} ORDER BY id DESC`, params);
   const withAttachments = await attachAttachmentsToTasks(rows);
-  return attachAssigneesToTasks(withAttachments);
+  const withAssignees = await attachAssigneesToTasks(withAttachments);
+  return attachTeamNamesToTasks(withAssignees);
 }
 
 async function listAllTasksForAdmin({ assigned_to, status, priority, assigned_to_in } = {}) {
@@ -368,10 +447,11 @@ async function listAllTasksForAdmin({ assigned_to, status, priority, assigned_to
     params
   );
   const withAttachments = await attachAttachmentsToTasks(rows);
-  return attachAssigneesToTasks(withAttachments);
+  const withAssignees = await attachAssigneesToTasks(withAttachments);
+  return attachTeamNamesToTasks(withAssignees);
 }
 
-const TASK_UPDATE_COLUMNS = ["title", "description", "due_date", "priority", "status"];
+const TASK_UPDATE_COLUMNS = ["title", "description", "due_date", "priority", "status", "team_id"];
 
 async function updateTask(id, fields) {
   const keys = Object.keys(fields).filter((k) => TASK_UPDATE_COLUMNS.includes(k));
@@ -760,6 +840,12 @@ module.exports = {
   listTeamMembers,
   updateUserRole,
   updateUserTeamLead,
+  listTeams,
+  createTeam,
+  renameTeam,
+  deleteTeam,
+  getTeamMembers,
+  setUserTeamId,
   countUsers,
   findInvite,
   addInvite,

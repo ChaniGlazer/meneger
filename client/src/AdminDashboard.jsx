@@ -10,6 +10,7 @@ const ADMIN_TABS = [
   { key: "tasks", label: "משימות" },
   { key: "hours", label: "שעות עבודה" },
   { key: "users", label: "משתמשות", adminOnly: true },
+  { key: "teams", label: "צוותים", adminOnly: true },
 ];
 
 function todayIso() {
@@ -119,6 +120,18 @@ export default function AdminDashboard({ myUserId, myRole }) {
   const [hoursLoading, setHoursLoading] = useState(true);
   const [hoursError, setHoursError] = useState("");
 
+  const [teams, setTeams] = useState([]);
+  const [teamsLoading, setTeamsLoading] = useState(true);
+  const [teamsError, setTeamsError] = useState("");
+  const [newTeamName, setNewTeamName] = useState("");
+  const [teamBusy, setTeamBusy] = useState(false);
+  const [confirmDeleteTeam, setConfirmDeleteTeam] = useState(null);
+  const [managingTeam, setManagingTeam] = useState(null);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  const [teamMembersError, setTeamMembersError] = useState("");
+  const [addTeamMemberId, setAddTeamMemberId] = useState("");
+
   const [timeLogEntries, setTimeLogEntries] = useState([]);
   const [timeLogEntriesLoading, setTimeLogEntriesLoading] = useState(false);
   const [timeLogEntriesError, setTimeLogEntriesError] = useState("");
@@ -145,6 +158,100 @@ export default function AdminDashboard({ myUserId, myRole }) {
     if (myRole === "admin") fetchInvites();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function fetchTeams() {
+    setTeamsLoading(true);
+    setTeamsError("");
+    authedFetch("admin/teams")
+      .then((data) => setTeams(data.teams))
+      .catch((err) => setTeamsError(err.message))
+      .finally(() => setTeamsLoading(false));
+  }
+
+  useEffect(() => {
+    if (myRole === "admin") fetchTeams();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleCreateTeam(e) {
+    e.preventDefault();
+    const name = newTeamName.trim();
+    if (!name) return;
+    setTeamBusy(true);
+    setTeamsError("");
+    try {
+      await authedFetch("admin/teams", { method: "POST", body: JSON.stringify({ name }) });
+      setNewTeamName("");
+      fetchTeams();
+    } catch (err) {
+      setTeamsError(err.message);
+    } finally {
+      setTeamBusy(false);
+    }
+  }
+
+  function handleDeleteTeam(team) {
+    setConfirmDeleteTeam(team);
+  }
+
+  async function confirmDeleteTeamNow() {
+    const team = confirmDeleteTeam;
+    setConfirmDeleteTeam(null);
+    setTeamsError("");
+    try {
+      await authedFetch(`admin/teams/${team.id}`, { method: "DELETE" });
+      if (managingTeam?.id === team.id) closeManageTeam();
+      fetchTeams();
+    } catch (err) {
+      setTeamsError(err.message);
+    }
+  }
+
+  function openManageTeam(team) {
+    setManagingTeam(team);
+    setAddTeamMemberId("");
+    setTeamMembersError("");
+    setTeamMembersLoading(true);
+    authedFetch(`admin/teams/${team.id}/members`)
+      .then((data) => setTeamMembers(data.members))
+      .catch((err) => setTeamMembersError(err.message))
+      .finally(() => setTeamMembersLoading(false));
+  }
+
+  function closeManageTeam() {
+    setManagingTeam(null);
+    setTeamMembers([]);
+  }
+
+  async function handleAddTeamMember(e) {
+    e.preventDefault();
+    if (!addTeamMemberId) return;
+    setTeamMembersError("");
+    try {
+      const data = await authedFetch(`admin/teams/${managingTeam.id}/members`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: Number(addTeamMemberId) }),
+      });
+      setTeamMembers(data.members);
+      setAddTeamMemberId("");
+      fetchTeams();
+    } catch (err) {
+      setTeamMembersError(err.message);
+    }
+  }
+
+  async function handleRemoveTeamMember(userId) {
+    setTeamMembersError("");
+    try {
+      const data = await authedFetch(`admin/teams/${managingTeam.id}/members/${userId}`, {
+        method: "DELETE",
+      });
+      setTeamMembers(data.members);
+      fetchTeams();
+    } catch (err) {
+      setTeamMembersError(err.message);
+    }
+  }
 
   async function handleAddInvite(e) {
     e.preventDefault();
@@ -238,6 +345,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
       priority: "medium",
       status: "todo",
       assigned_to: [],
+      team_id: "",
     });
   }
 
@@ -251,6 +359,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
       priority: task.priority || "medium",
       status: task.status || "todo",
       assigned_to: (task.assignees || []).map((a) => String(a.id)),
+      team_id: task.team_id ? String(task.team_id) : "",
     });
   }
 
@@ -281,6 +390,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
       priority: taskForm.priority,
       status: taskForm.status,
       assigned_to: taskForm.assigned_to.map(Number),
+      team_id: taskForm.team_id || null,
     };
     try {
       if (editingTask === "new") {
@@ -485,6 +595,27 @@ export default function AdminDashboard({ myUserId, myRole }) {
     }
   }
 
+  async function handleChangeTeam(userId, teamId) {
+    const previous = employees;
+    setUsersError("");
+    const team = teams.find((t) => String(t.id) === teamId);
+    setEmployees((prev) =>
+      prev.map((u) =>
+        u.id === userId ? { ...u, team_id: teamId ? Number(teamId) : null, team_name: team?.name ?? null } : u
+      )
+    );
+    try {
+      await authedFetch(`admin/users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ team_id: teamId || null }),
+      });
+      fetchTeams();
+    } catch (err) {
+      setEmployees(previous);
+      setUsersError(err.message);
+    }
+  }
+
   return (
     <div className="admin-sections">
       <div className="admin-tabs" role="tablist">
@@ -637,6 +768,23 @@ export default function AdminDashboard({ myUserId, myRole }) {
                 </div>
               </div>
 
+              {myRole === "admin" && (
+                <label>
+                  צוות (אופציונלי — כל חברות הצוות יקבלו גישה למשימה)
+                  <select
+                    value={taskForm.team_id}
+                    onChange={(e) => setTaskForm((f) => ({ ...f, team_id: e.target.value }))}
+                  >
+                    <option value="">ללא צוות</option>
+                    {teams.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
               <div className="admin-modal-actions">
                 <button type="button" className="btn btn-secondary" onClick={closeTaskForm} disabled={taskFormSaving}>
                   ביטול
@@ -665,6 +813,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
               <tr>
                 <th>כותרת</th>
                 <th>משויכת ל-</th>
+                <th>צוות</th>
                 <th>סטטוס</th>
                 <th>עדיפות</th>
                 <th>יעד</th>
@@ -678,6 +827,11 @@ export default function AdminDashboard({ myUserId, myRole }) {
                   <td>
                     {task.assignees?.length
                       ? task.assignees.map((a) => a.username).join(", ")
+                      : <span className="admin-cell-muted">—</span>}
+                  </td>
+                  <td>
+                    {task.team_name
+                      ? <span className="pill">{task.team_name}</span>
                       : <span className="admin-cell-muted">—</span>}
                   </td>
                   <td>
@@ -1054,6 +1208,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
                 <th>שם משתמשת</th>
                 <th>תפקיד</th>
                 <th>ראשת צוות</th>
+                <th>צוות</th>
               </tr>
             </thead>
             <tbody>
@@ -1091,12 +1246,171 @@ export default function AdminDashboard({ myUserId, myRole }) {
                         ))}
                     </select>
                   </td>
+                  <td>
+                    <select
+                      value={u.team_id ?? ""}
+                      onChange={(e) => handleChangeTeam(u.id, e.target.value)}
+                    >
+                      <option value="">— ללא —</option>
+                      {teams.map((team) => (
+                        <option key={team.id} value={team.id}>
+                          {team.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
           <TableStates loading={false} empty={employees.length === 0} emptyText="לא נמצאו משתמשות" />
         </div>
+      </section>
+      )}
+
+      {activeTab === "teams" && (
+      <section className="admin-section">
+        <div className="admin-section-head">
+          <h2>צוותים</h2>
+        </div>
+
+        <p className="empty-hint">
+          חברות צוות מקבלות גישה אוטומטית לכל משימה שמשויכת לצוות שלהן.
+        </p>
+
+        <form className="admin-filters" onSubmit={handleCreateTeam}>
+          <input
+            type="text"
+            placeholder="שם צוות חדש"
+            value={newTeamName}
+            onChange={(e) => setNewTeamName(e.target.value)}
+            maxLength={100}
+            required
+          />
+          <button type="submit" className="btn btn-primary" disabled={teamBusy}>
+            {teamBusy ? "ביצירה…" : "יצירת צוות"}
+          </button>
+        </form>
+
+        {teamsError && <div className="join-error">{teamsError}</div>}
+
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>שם הצוות</th>
+                <th>מספר חברות</th>
+                <th className="admin-table-actions-col"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {teams.map((team) => (
+                <tr key={team.id}>
+                  <td className="admin-table-title-cell">{team.name}</td>
+                  <td>{team.member_count}</td>
+                  <td className="admin-task-row-actions">
+                    <div
+                      className="menu-wrap"
+                      ref={openRowMenu === `team-${team.id}` ? rowMenuRef : null}
+                    >
+                      <button
+                        type="button"
+                        className="menu-trigger"
+                        aria-label={`פעולות על הצוות "${team.name}"`}
+                        onClick={() =>
+                          setOpenRowMenu((prev) => (prev === `team-${team.id}` ? null : `team-${team.id}`))
+                        }
+                      >
+                        ⋮
+                      </button>
+                      {openRowMenu === `team-${team.id}` && (
+                        <div className="menu-dropdown">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenRowMenu(null);
+                              openManageTeam(team);
+                            }}
+                          >
+                            ניהול חברות
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenRowMenu(null);
+                              handleDeleteTeam(team);
+                            }}
+                          >
+                            מחיקה
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <TableStates loading={teamsLoading} empty={!teamsLoading && teams.length === 0} emptyText="אין עדיין צוותים" />
+        </div>
+
+        <Modal
+          open={managingTeam != null}
+          onClose={closeManageTeam}
+          title={managingTeam ? `ניהול חברות — ${managingTeam.name}` : ""}
+        >
+          {teamMembersError && <div className="join-error">{teamMembersError}</div>}
+
+          <div className="user-list">
+            {teamMembers.map((member) => (
+              <div key={member.id} className="checkbox-row checkbox-row--split">
+                <span dir="auto">{member.username}</span>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm btn-danger"
+                  onClick={() => handleRemoveTeamMember(member.id)}
+                >
+                  הסירי
+                </button>
+              </div>
+            ))}
+            <TableStates
+              loading={teamMembersLoading}
+              empty={!teamMembersLoading && teamMembers.length === 0}
+              emptyText="אין עדיין חברות בצוות"
+            />
+          </div>
+
+          <form className="admin-filters" onSubmit={handleAddTeamMember}>
+            <select value={addTeamMemberId} onChange={(e) => setAddTeamMemberId(e.target.value)}>
+              <option value="">בחרי משתמשת להוספה</option>
+              {employees
+                .filter((emp) => !teamMembers.some((m) => m.id === emp.id))
+                .map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.username}
+                  </option>
+                ))}
+            </select>
+            <button type="submit" className="btn btn-primary" disabled={!addTeamMemberId}>
+              הוספה
+            </button>
+          </form>
+        </Modal>
+
+        <ConfirmDialog
+          open={confirmDeleteTeam != null}
+          title="מחיקת צוות"
+          message={
+            confirmDeleteTeam
+              ? `למחוק את הצוות "${confirmDeleteTeam.name}"? חברות הצוות יישארו במערכת אך יאבדו את השיוך לצוות זה.`
+              : ""
+          }
+          confirmLabel="מחיקה"
+          danger
+          onConfirm={confirmDeleteTeamNow}
+          onCancel={() => setConfirmDeleteTeam(null)}
+        />
       </section>
       )}
     </div>
