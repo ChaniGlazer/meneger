@@ -36,3 +36,15 @@ export function splitEmoji(text) {
 export function emojiSrc(codepoints) {
   return `/emoji/svg/${codepoints}.svg`;
 }
+
+export function codepointsToChar(codepoints) {
+  return codepoints
+    .split("-")
+    .map((hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .join("");
+}
+
+export const EMOJI_PICKER_LIST = emojiManifest.map((codepoints) => ({
+  codepoints,
+  char: codepointsToChar(codepoints),
+}));

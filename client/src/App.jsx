@@ -8,6 +8,7 @@ import Inbox from "./Inbox";
 import Modal from "./components/Modal";
 import ConfirmDialog from "./components/ConfirmDialog";
 import EmojiText from "./components/EmojiText";
+import EmojiPicker from "./components/EmojiPicker";
 import { TASK_STATUS_COLUMNS, TASK_PRIORITY_LABELS } from "./taskMeta";
 
 const socket = io(import.meta.env.VITE_SOCKET_URL || undefined, { autoConnect: false });
@@ -159,6 +160,7 @@ export default function App() {
   const [removedNotice, setRemovedNotice] = useState(false);
   const [reactionPickerFor, setReactionPickerFor] = useState(null);
   const [messageMenuFor, setMessageMenuFor] = useState(null);
+  const [showComposerEmoji, setShowComposerEmoji] = useState(false);
 
   const bottomRef = useRef(null);
   const activeIdRef = useRef(null);
@@ -169,6 +171,8 @@ export default function App() {
   const typingExpiryTimersRef = useRef(new Map());
   const reactionPickerRef = useRef(null);
   const messageMenuRef = useRef(null);
+  const composerEmojiRef = useRef(null);
+  const draftTextareaRef = useRef(null);
 
   useEffect(() => {
     activeIdRef.current = active?.id ?? null;
@@ -215,6 +219,44 @@ export default function App() {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [messageMenuFor]);
+
+  // Same pattern for the composer's emoji picker.
+  useEffect(() => {
+    if (!showComposerEmoji) return;
+
+    function handlePointerDown(e) {
+      if (!composerEmojiRef.current?.contains(e.target)) {
+        setShowComposerEmoji(false);
+      }
+    }
+    function handleKeyDown(e) {
+      if (e.key === "Escape") setShowComposerEmoji(false);
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showComposerEmoji]);
+
+  function insertEmojiIntoDraft(char) {
+    const el = draftTextareaRef.current;
+    if (!el) {
+      handleDraftChange(draft + char);
+      return;
+    }
+    const start = el.selectionStart ?? draft.length;
+    const end = el.selectionEnd ?? draft.length;
+    const next = draft.slice(0, start) + char + draft.slice(end);
+    handleDraftChange(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const caret = start + char.length;
+      el.setSelectionRange(caret, caret);
+    });
+  }
 
   useEffect(() => {
     usernameRef.current = username;
@@ -1200,7 +1242,28 @@ export default function App() {
               hidden
             />
           </label>
+          <div className="menu-wrap composer-emoji-wrap" ref={composerEmojiRef}>
+            <button
+              type="button"
+              className="emoji-trigger"
+              aria-label="הוספת אימוג'י"
+              onClick={() => setShowComposerEmoji((prev) => !prev)}
+            >
+              <EmojiText text="😊" />
+            </button>
+            {showComposerEmoji && (
+              <div className="emoji-picker-panel">
+                <EmojiPicker
+                  onSelect={(char) => {
+                    insertEmojiIntoDraft(char);
+                    setShowComposerEmoji(false);
+                  }}
+                />
+              </div>
+            )}
+          </div>
           <textarea
+            ref={draftTextareaRef}
             placeholder="הקלידי הודעה..."
             value={draft}
             onChange={(e) => handleDraftChange(e.target.value)}
