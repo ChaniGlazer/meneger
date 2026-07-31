@@ -39,6 +39,16 @@ async function init() {
   await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id)`);
 
   await query(`
+    CREATE TABLE IF NOT EXISTS password_resets (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS invited_emails (
       email CITEXT PRIMARY KEY,
       invited_by CITEXT,
@@ -208,6 +218,36 @@ async function removeInvite(email) {
 
 async function markInviteUsed(email, userId) {
   await query("UPDATE invited_emails SET used_by = $1, used_at = now() WHERE email = $2", [userId, email]);
+}
+
+async function findUserByEmail(email) {
+  const { rows } = await query(
+    "SELECT id, username, email FROM users WHERE email = $1",
+    [email]
+  );
+  return rows[0];
+}
+
+async function createPasswordReset(userId, token, expiresAt) {
+  await query(
+    "INSERT INTO password_resets (token, user_id, expires_at) VALUES ($1, $2, $3)",
+    [token, userId, expiresAt]
+  );
+}
+
+async function findPasswordReset(token) {
+  const { rows } = await query(
+    `SELECT pr.token, pr.user_id, pr.expires_at, pr.used_at, u.username
+     FROM password_resets pr
+     JOIN users u ON u.id = pr.user_id
+     WHERE pr.token = $1`,
+    [token]
+  );
+  return rows[0];
+}
+
+async function markPasswordResetUsed(token) {
+  await query("UPDATE password_resets SET used_at = now() WHERE token = $1", [token]);
 }
 
 async function findUserById(id) {
@@ -852,6 +892,10 @@ module.exports = {
   listInvites,
   removeInvite,
   markInviteUsed,
+  findUserByEmail,
+  createPasswordReset,
+  findPasswordReset,
+  markPasswordResetUsed,
   ROLES,
   listOtherUsers,
   getOrCreateDmConversation,

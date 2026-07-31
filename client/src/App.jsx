@@ -111,12 +111,21 @@ export default function App() {
   const [timeClockError, setTimeClockError] = useState("");
   const [timeClockNow, setTimeClockNow] = useState(Date.now());
   const [timeClockHasWorkedToday, setTimeClockHasWorkedToday] = useState(false);
-  const [authMode, setAuthMode] = useState("login"); // "login" | "register"
+  const [authMode, setAuthMode] = useState("login"); // "login" | "register" | "forgot"
   const [authName, setAuthName] = useState("");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
+
+  const [resetToken, setResetToken] = useState(null);
+  const [resetPassword1, setResetPassword1] = useState("");
+  const [resetPassword2, setResetPassword2] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState("");
+  const [resetDone, setResetDone] = useState(false);
 
   const [conversations, setConversations] = useState([]);
   const [conversationsLoading, setConversationsLoading] = useState(true);
@@ -415,6 +424,17 @@ export default function App() {
     if (userId != null) fetchTasks(userId);
   }
 
+  // A password-reset email link opens the app with ?reset=<token> — catch it
+  // before the normal session/login flow takes over.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("reset");
+    if (token) {
+      setResetToken(token);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   // Validate any stored session on load
   useEffect(() => {
     const token = localStorage.getItem("chat-token");
@@ -597,6 +617,56 @@ export default function App() {
     } finally {
       setAuthBusy(false);
     }
+  }
+
+  async function handleForgotSubmit(e) {
+    e.preventDefault();
+    setAuthError("");
+    setAuthBusy(true);
+    try {
+      await api("forgot-password", { email: forgotEmail.trim() });
+      setForgotSent(true);
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleResetSubmit(e) {
+    e.preventDefault();
+    setResetError("");
+    if (resetPassword1.length < 6) {
+      setResetError("הסיסמה חייבת להכיל לפחות 6 תווים");
+      return;
+    }
+    if (resetPassword1 !== resetPassword2) {
+      setResetError("הסיסמאות אינן תואמות");
+      return;
+    }
+    setResetBusy(true);
+    try {
+      await api("reset-password", { token: resetToken, password: resetPassword1 });
+      setResetDone(true);
+    } catch (err) {
+      setResetError(err.message);
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
+  function backToLoginFromReset() {
+    setResetToken(null);
+    setResetDone(false);
+    setResetPassword1("");
+    setResetPassword2("");
+    setResetError("");
+  }
+
+  function openForgotPassword() {
+    setAuthMode("forgot");
+    setAuthError("");
+    setForgotSent(false);
   }
 
   function openConversation(row) {
@@ -883,10 +953,109 @@ export default function App() {
     if (row) openConversation(row);
   }
 
+  if (resetToken) {
+    return (
+      <div className="screen">
+        {resetDone ? (
+          <div className="join-card">
+            <img className="join-card-logo" src="/brand/codebloom.svg" alt="" aria-hidden="true" />
+            <h1>הסיסמה עודכנה</h1>
+            <p className="join-card-subtitle">אפשר להתחבר עכשיו עם הסיסמה החדשה.</p>
+            <button type="button" className="btn btn-primary" onClick={backToLoginFromReset}>
+              למסך ההתחברות
+            </button>
+          </div>
+        ) : (
+          <form className="join-card" onSubmit={handleResetSubmit}>
+            <img className="join-card-logo" src="/brand/codebloom.svg" alt="" aria-hidden="true" />
+            <h1>בחירת סיסמה חדשה</h1>
+            <input
+              autoFocus
+              type="password"
+              placeholder="סיסמה חדשה (לפחות 6 תווים)"
+              value={resetPassword1}
+              onChange={(e) => setResetPassword1(e.target.value)}
+              maxLength={100}
+            />
+            <input
+              type="password"
+              placeholder="אימות סיסמה חדשה"
+              value={resetPassword2}
+              onChange={(e) => setResetPassword2(e.target.value)}
+              maxLength={100}
+            />
+            {resetError && <div className="join-error">{resetError}</div>}
+            <button type="submit" disabled={resetBusy}>
+              {resetBusy ? "בשמירה…" : "עדכון סיסמה"}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={backToLoginFromReset}>
+              ביטול
+            </button>
+          </form>
+        )}
+      </div>
+    );
+  }
+
   if (checkingSession) {
     return (
       <div className="screen">
         <div className="app-spinner" role="status" aria-label="טוענת..." />
+      </div>
+    );
+  }
+
+  if (stage === "auth" && authMode === "forgot") {
+    return (
+      <div className="screen">
+        <form className="join-card" onSubmit={handleForgotSubmit}>
+          <img className="join-card-logo" src="/brand/codebloom.svg" alt="" aria-hidden="true" />
+          <h1>איפוס סיסמה</h1>
+          {forgotSent ? (
+            <>
+              <p className="join-card-subtitle">
+                אם כתובת האימייל הזו רשומה במערכת, נשלח אליה קישור לאיפוס הסיסמה.
+              </p>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setAuthMode("login");
+                  setAuthError("");
+                }}
+              >
+                למסך ההתחברות
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="join-card-subtitle">נשלח קישור לאיפוס הסיסמה לכתובת האימייל שלך.</p>
+              <input
+                autoFocus
+                type="email"
+                placeholder="כתובת אימייל"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                maxLength={200}
+                required
+              />
+              {authError && <div className="join-error">{authError}</div>}
+              <button type="submit" disabled={authBusy}>
+                {authBusy ? "שולחת…" : "שליחת קישור לאיפוס"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setAuthMode("login");
+                  setAuthError("");
+                }}
+              >
+                ביטול
+              </button>
+            </>
+          )}
+        </form>
       </div>
     );
   }
@@ -949,6 +1118,11 @@ export default function App() {
             onChange={(e) => setAuthPassword(e.target.value)}
             maxLength={100}
           />
+          {authMode === "login" && (
+            <button type="button" className="link-button" onClick={openForgotPassword}>
+              שכחתי סיסמה
+            </button>
+          )}
           {authError && <div className="join-error">{authError}</div>}
           <button type="submit" disabled={authBusy}>
             {authBusy

@@ -33,6 +33,10 @@ const {
   listInvites,
   removeInvite,
   markInviteUsed,
+  findUserByEmail,
+  createPasswordReset,
+  findPasswordReset,
+  markPasswordResetUsed,
   ROLES,
   listOtherUsers,
   getOrCreateDmConversation,
@@ -61,6 +65,7 @@ const {
 } = require("./db");
 const { hashPassword, verifyPassword, createToken } = require("./auth");
 const { upload, saveToStorage, deleteFromStorage, getPublicUrl } = require("./upload");
+const { sendEmail } = require("./mailer");
 
 const PORT = process.env.PORT || 4000;
 
@@ -212,6 +217,63 @@ app.post(
     }
 
     await updateUserPassword(req.username, hashPassword(newPassword));
+    res.json({ ok: true });
+  })
+);
+
+app.post(
+  "/api/forgot-password",
+  ah(async (req, res) => {
+    const email = String(req.body?.email || "").trim().toLowerCase().slice(0, 200);
+    if (!EMAIL_RE.test(email)) {
+      return res.status(400).json({ error: "יש להזין כתובת אימייל תקינה" });
+    }
+
+    const user = await findUserByEmail(email);
+    if (user) {
+      const token = createToken();
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+      await createPasswordReset(user.id, token, expiresAt);
+      const origin = `${req.protocol}://${req.get("host")}`;
+      const resetUrl = `${origin}/?reset=${token}`;
+      try {
+        await sendEmail({
+          to: email,
+          toName: user.username,
+          subject: "איפוס סיסמה — מערכת ניהול עובדות",
+          html: `<p>שלום ${user.username},</p><p>התקבלה בקשה לאיפוס הסיסמה שלך. לחצי על הקישור הבא כדי לבחור סיסמה חדשה (בתוקף לשעה אחת):</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>אם לא ביקשת זאת, אפשר להתעלם מההודעה הזו.</p>`,
+          text: `התקבלה בקשה לאיפוס הסיסמה שלך. הקישור בתוקף לשעה אחת: ${resetUrl}`,
+        });
+      } catch (err) {
+        console.error("Failed to send password reset email:", err.message);
+      }
+    }
+
+    // Same response whether or not the email is registered — otherwise the
+    // response itself would let anyone probe which addresses have accounts.
+    res.json({ ok: true });
+  })
+);
+
+app.post(
+  "/api/reset-password",
+  ah(async (req, res) => {
+    const token = String(req.body?.token || "");
+    const password = String(req.body?.password || "");
+    if (!token) {
+      return res.status(400).json({ error: "קישור לא תקין" });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: "הסיסמה חייבת להכיל לפחות 6 תווים" });
+    }
+
+    const reset = await findPasswordReset(token);
+    if (!reset || reset.used_at || new Date(reset.expires_at) < new Date()) {
+      return res.status(400).json({ error: "הקישור לאיפוס הסיסמה אינו תקין או שפג תוקפו" });
+    }
+
+    await updateUserPassword(reset.username, hashPassword(password));
+    await markPasswordResetUsed(token);
     res.json({ ok: true });
   })
 );
