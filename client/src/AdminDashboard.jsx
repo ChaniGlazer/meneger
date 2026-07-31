@@ -3,6 +3,7 @@ import { authedFetch } from "./api";
 import Modal from "./components/Modal";
 import ConfirmDialog from "./components/ConfirmDialog";
 import { TASK_STATUS_LABELS, TASK_PRIORITY_LABELS } from "./taskMeta";
+import { EditIcon, TrashIcon, UsersIcon } from "./components/Icon";
 
 const ROLE_LABELS = { employee: "עובדת", team_lead: "ראשת צוות", admin: "מנהלת" };
 
@@ -870,7 +871,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
                                 openEditTaskForm(task);
                               }}
                             >
-                              עריכה
+                              <EditIcon /> עריכה
                             </button>
                             <button
                               type="button"
@@ -879,7 +880,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
                                 handleDeleteTask(task);
                               }}
                             >
-                              מחיקה
+                              <TrashIcon /> מחיקה
                             </button>
                           </div>
                         )}
@@ -1028,7 +1029,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
                                   openEditTimeLogForm(log);
                                 }}
                               >
-                                עריכה
+                                <EditIcon /> עריכה
                               </button>
                               <button
                                 type="button"
@@ -1037,7 +1038,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
                                   handleDeleteTimeLog(log);
                                 }}
                               >
-                                מחיקה
+                                <TrashIcon /> מחיקה
                               </button>
                             </div>
                           )}
@@ -1184,8 +1185,10 @@ export default function AdminDashboard({ myUserId, myRole }) {
                       type="button"
                       className="btn btn-ghost btn-sm btn-danger"
                       onClick={() => handleRemoveInvite(inv.email)}
+                      aria-label={`מחיקת ההזמנה ל-${inv.email}`}
+                      title="מחיקה"
                     >
-                      מחיקה
+                      <TrashIcon />
                     </button>
                   </td>
                 </tr>
@@ -1332,7 +1335,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
                               openManageTeam(team);
                             }}
                           >
-                            ניהול חברות
+                            <UsersIcon /> ניהול חברות
                           </button>
                           <button
                             type="button"
@@ -1341,7 +1344,7 @@ export default function AdminDashboard({ myUserId, myRole }) {
                               handleDeleteTeam(team);
                             }}
                           >
-                            מחיקה
+                            <TrashIcon /> מחיקה
                           </button>
                         </div>
                       )}

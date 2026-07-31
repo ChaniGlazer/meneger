@@ -9,6 +9,7 @@ import Modal from "./components/Modal";
 import ConfirmDialog from "./components/ConfirmDialog";
 import EmojiText from "./components/EmojiText";
 import EmojiPicker from "./components/EmojiPicker";
+import { SendIcon, AttachIcon, EditIcon, TrashIcon, ReplyIcon } from "./components/Icon";
 import { TASK_STATUS_COLUMNS, TASK_PRIORITY_LABELS } from "./taskMeta";
 
 const socket = io(import.meta.env.VITE_SOCKET_URL || undefined, { autoConnect: false });
@@ -1011,8 +1012,12 @@ export default function App() {
                             ))}
                           </div>
                         )}
-                        <label className="attach-button task-attach-button">
-                          {uploadingTaskId === task.id ? "מעלה…" : "צרפי קובץ"}
+                        <label
+                          className="attach-button task-attach-button"
+                          aria-label={uploadingTaskId === task.id ? "מעלה קובץ…" : "צירוף קובץ"}
+                          title={uploadingTaskId === task.id ? "מעלה קובץ…" : "צירוף קובץ"}
+                        >
+                          <AttachIcon />
                           <input
                             type="file"
                             hidden
@@ -1229,16 +1234,16 @@ export default function App() {
                       {messageMenuFor === m.id && (
                         <div className="menu-dropdown">
                           <button type="button" onClick={() => startReplyingToMessage(m)}>
-                            הגיבי
+                            <ReplyIcon /> הגיבי
                           </button>
                           {m.username === username && m.text && !m.attachment && (
                             <button type="button" onClick={() => startEditingMessage(m)}>
-                              עריכה
+                              <EditIcon /> עריכה
                             </button>
                           )}
                           {m.username === username && (
                             <button type="button" onClick={() => handleDeleteMessage(m)}>
-                              מחיקה
+                              <TrashIcon /> מחיקה
                             </button>
                           )}
                         </div>
@@ -1295,8 +1300,12 @@ export default function App() {
         )}
 
         <form className="composer" onSubmit={handleSend}>
-          <label className="attach-button">
-            {attachmentUploading ? "..." : "צרפי קובץ"}
+          <label
+            className="attach-button"
+            aria-label={attachmentUploading ? "מעלה קובץ…" : "צירוף קובץ"}
+            title={attachmentUploading ? "מעלה קובץ…" : "צירוף קובץ"}
+          >
+            <AttachIcon />
             <input
               type="file"
               onChange={handleAttachmentSelect}
@@ -1338,7 +1347,9 @@ export default function App() {
             maxLength={2000}
             rows={1}
           />
-          <button type="submit">שלחי</button>
+          <button type="submit" className="send-button" aria-label="שליחת הודעה" title="שליחת הודעה">
+            <SendIcon />
+          </button>
         </form>
       </div>
     );
