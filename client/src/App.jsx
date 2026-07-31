@@ -1119,9 +1119,11 @@ export default function App() {
             maxLength={100}
           />
           {authMode === "login" && (
-            <button type="button" className="link-button" onClick={openForgotPassword}>
-              שכחתי סיסמה
-            </button>
+            <div className="field-link-row">
+              <button type="button" className="link-button" onClick={openForgotPassword}>
+                שכחתי סיסמה
+              </button>
+            </div>
           )}
           {authError && <div className="join-error">{authError}</div>}
           <button type="submit" disabled={authBusy}>
@@ -1521,7 +1523,13 @@ export default function App() {
             maxLength={2000}
             rows={1}
           />
-          <button type="submit" className="send-button" aria-label="שליחת הודעה" title="שליחת הודעה">
+          <button
+            type="submit"
+            className="send-button"
+            aria-label="שליחת הודעה"
+            title="שליחת הודעה"
+            disabled={!draft.trim() && !pendingAttachment}
+          >
             <SendIcon />
           </button>
         </form>

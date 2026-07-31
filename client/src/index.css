@@ -392,13 +392,39 @@ button, input, select, textarea {
   border-color: var(--border-brand);
 }
 
+/* ---- inline text link -------------------------------------------------
+   A third archetype, distinct from both .btn (a filled/outlined action)
+   and .icon-button (a toolbar toggle): an action that reads as body text
+   with a link's affordance, for a single low-emphasis choice offered
+   alongside a form rather than competing with its primary submit button
+   (e.g. "forgot password?"). Underline only appears on hover/focus — a
+   permanently-underlined control this close to real prose reads as noise,
+   but its absence is exactly what signals "this is clickable" once you
+   move toward it. */
 .link-button {
   background: none;
   border: none;
   color: var(--fg-link);
   cursor: pointer;
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   padding: 0;
+  text-decoration: none;
+}
+
+.link-button:hover,
+.link-button:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Sits directly under a field it relates to, pulled to the field's far
+   edge rather than centered with the rest of a stacked form — the usual
+   "forgot password?" placement. */
+.field-link-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: calc(var(--space-2) * -1);
 }
 
 /* ============================================================================
@@ -1501,47 +1527,45 @@ button, input, select, textarea {
   align-self: flex-end;
 }
 
-.attach-button {
+/* ---- icon-ghost button ----------------------------------------------------
+   A distinct archetype from .btn: a single-purpose, icon-only utility toggle
+   (attach a file, open the emoji picker) that sits directly in a toolbar/
+   composer rather than as a standalone action. Modern chat UIs (Telegram,
+   Slack, WhatsApp) render these with no visible box at rest — just a muted
+   icon — and reveal a soft round highlight on hover/focus, so several of
+   these can sit side by side without reading as a row of buttons. This is
+   the same family as .menu-trigger/.reaction-add (transparent + hover-fill)
+   sized up for a standalone toolbar context instead of an inline affordance. */
+.icon-button,
+.attach-button,   /* file-attach in the composer and on a task card */
+.emoji-trigger {  /* emoji-picker trigger in the composer */
   display: inline-flex;
   align-items: center;
-  background: var(--bg-surface);
-  color: var(--fg-default);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-sm);
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: var(--text-lg);
+  line-height: 1;
   cursor: pointer;
-  white-space: nowrap;
   transition: background-color var(--dur-fast) var(--ease-out),
-              border-color var(--dur-fast) var(--ease-out);
+              color var(--dur-fast) var(--ease-out);
 }
 
-.attach-button:hover {
+.icon-button:hover,
+.attach-button:hover,
+.emoji-trigger:hover {
   background: var(--bg-surface-hover);
-  border-color: var(--border-strong);
+  color: var(--fg-default);
 }
 
 .composer-emoji-wrap {
   display: flex;
   align-self: flex-end;
-}
-
-.emoji-trigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-  cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-out),
-              border-color var(--dur-fast) var(--ease-out);
-}
-
-.emoji-trigger:hover {
-  background: var(--bg-surface-hover);
-  border-color: var(--border-strong);
 }
 
 .emoji-picker-panel {
@@ -1871,11 +1895,10 @@ button, input, select, textarea {
 }
 
 .task-attach-button {
-  width: 100%;
-  justify-content: center;
+  width: 32px;
+  height: 32px;
+  font-size: var(--text-md);
   margin-bottom: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--text-xs);
 }
 
 .task-assignee-list {

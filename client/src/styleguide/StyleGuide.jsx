@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { contrast, verdict } from "./contrast";
+import { SendIcon, AttachIcon, EditIcon } from "../components/Icon";
 
 /* ---------------------------------------------------------------- helpers */
 
@@ -238,6 +239,33 @@ export default function StyleGuide() {
           <button className="time-clock-button clock-in">התחלת עבודה</button>
           <button className="time-clock-button clock-out">סיום עבודה</button>
           <span className="time-clock-error">שגיאה בטעינת שעון הנוכחות</span>
+        </div>
+
+        <div className="sg-h3">
+          כפתור-אייקון — פעולת-עזר חד-פעמית בתוך סרגל כלים (צירוף קובץ,
+          פתיחת בורר אימוג'ים). ללא תיבה במנוחה; רק העלאת רקע עגולה במעבר עכבר.
+        </div>
+        <div className="sg-row">
+          <button className="icon-button" aria-label="דוגמה">
+            <AttachIcon />
+          </button>
+          <button className="icon-button" aria-label="דוגמה">
+            <EditIcon />
+          </button>
+          <button className="send-button" aria-label="שליחה — פעילה">
+            <SendIcon />
+          </button>
+          <button className="send-button" aria-label="שליחה — כלום לשלוח" disabled>
+            <SendIcon />
+          </button>
+        </div>
+
+        <div className="sg-h3">
+          קישור-טקסט — בחירה משנית שיושבת לצד טופס בלי להתחרות בכפתור
+          השליחה (למשל "שכחתי סיסמה"). קו תחתון רק במעבר עכבר/פוקוס.
+        </div>
+        <div className="sg-row">
+          <button className="link-button">שכחתי סיסמה</button>
         </div>
       </Section>
 
