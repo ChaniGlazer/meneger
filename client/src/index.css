@@ -1142,6 +1142,13 @@ button, input, select, textarea {
   word-break: break-word;
 }
 
+.emoji {
+  height: 1.2em;
+  width: 1.2em;
+  vertical-align: -0.2em;
+  object-fit: contain;
+}
+
 .bubble.deleted {
   background: transparent;
   border: 1px dashed var(--border-default);

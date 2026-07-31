@@ -7,6 +7,7 @@ import Sidebar from "./Sidebar";
 import Inbox from "./Inbox";
 import Modal from "./components/Modal";
 import ConfirmDialog from "./components/ConfirmDialog";
+import EmojiText from "./components/EmojiText";
 import { TASK_STATUS_COLUMNS, TASK_PRIORITY_LABELS } from "./taskMeta";
 
 const socket = io(import.meta.env.VITE_SOCKET_URL || undefined, { autoConnect: false });
@@ -1076,7 +1077,7 @@ export default function App() {
                   {m.attachment && <AttachmentView attachment={m.attachment} />}
                   {m.text && (
                     <div className="bubble-text" dir="auto">
-                      {m.text}
+                      <EmojiText text={m.text} />
                     </div>
                   )}
                 </>
@@ -1092,7 +1093,7 @@ export default function App() {
                       title={usernames.join(", ")}
                       onClick={() => handleToggleReaction(m.id, emoji)}
                     >
-                      {emoji} {usernames.length}
+                      <EmojiText text={emoji} /> {usernames.length}
                     </button>
                   ))}
                   <button
@@ -1103,7 +1104,7 @@ export default function App() {
                       setReactionPickerFor((prev) => (prev === m.id ? null : m.id))
                     }
                   >
-                    😊+
+                    <EmojiText text="😊" />+
                   </button>
                   {reactionPickerFor === m.id && (
                     <div className="reaction-picker">
@@ -1114,7 +1115,7 @@ export default function App() {
                           aria-label={emoji}
                           onClick={() => handleToggleReaction(m.id, emoji)}
                         >
-                          {emoji}
+                          <EmojiText text={emoji} />
                         </button>
                       ))}
                     </div>
