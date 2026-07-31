@@ -61,10 +61,17 @@ function Ramp({ name, steps }) {
 /** Renders one message bubble matching App.jsx's real structure: name (group
     threads only) above the content, reaction badges, then a footer with the
     time and - for own messages - a "⋮" menu instead of permanent text links. */
-function Bubble({ mine, name, time, text, edited, deleted, reactions, editing, attachment, dm, menuOpen }) {
+function Bubble({ mine, name, time, text, edited, deleted, reactions, editing, attachment, dm, menuOpen, reply }) {
   return (
     <div className={`bubble ${mine ? "mine" : "theirs"}${deleted ? " deleted" : ""}`}>
       {!dm && !deleted && <div className="bubble-name">{name}</div>}
+
+      {reply && !deleted && (
+        <button type="button" className="bubble-quote">
+          <span className="bubble-quote-name">{reply.name}</span>
+          <span className="bubble-quote-text">{reply.text}</span>
+        </button>
+      )}
 
       {deleted ? (
         <div className="bubble-text bubble-deleted-text">ההודעה נמחקה</div>
@@ -298,6 +305,12 @@ export default function StyleGuide() {
           <Bubble name="רבקה" time="09:26" text="עריכה על בועה שהתקבלה" editing />
           <Bubble mine name="חני" time="09:27" text="עריכה על בועה שלי" editing />
           <Bubble mine name="חני" time="09:29" text="עם תפריט הפעולות פתוח" menuOpen />
+          <Bubble
+            name="רבקה"
+            time="09:32"
+            text="בטח, אשלח היום"
+            reply={{ name: "חני", text: "אפשר לקבל את הדוח עד סוף היום?" }}
+          />
           <Bubble
             name="רבקה"
             time="09:28"

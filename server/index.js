@@ -1132,7 +1132,7 @@ io.on(
 
     socket.on(
       "message",
-      sh(async ({ text, attachment } = {}) => {
+      sh(async ({ text, attachment, replyTo } = {}) => {
         const client = clients.get(socket.id);
         const clean = String(text || "").trim();
         const safeAttachment =
@@ -1146,11 +1146,20 @@ io.on(
             : null;
         if (!client || !client.activeConversationId || (!clean && !safeAttachment)) return;
 
+        let replyToId = Number(replyTo);
+        if (!Number.isInteger(replyToId)) {
+          replyToId = null;
+        } else {
+          const parentRoom = await getMessageRoom(replyToId);
+          if (parentRoom !== client.activeConversationId) replyToId = null;
+        }
+
         const saved = await saveMessage(
           client.activeConversationId,
           client.username,
           clean.slice(0, 2000),
-          safeAttachment
+          safeAttachment,
+          replyToId
         );
         io.to(client.activeConversationId).emit("message", saved);
       })

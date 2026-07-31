@@ -157,6 +157,7 @@ export default function App() {
   const [editingText, setEditingText] = useState("");
   const [messageActionError, setMessageActionError] = useState("");
   const [confirmDeleteMessage, setConfirmDeleteMessage] = useState(null);
+  const [replyingTo, setReplyingTo] = useState(null);
   const [removedNotice, setRemovedNotice] = useState(false);
   const [reactionPickerFor, setReactionPickerFor] = useState(null);
   const [messageMenuFor, setMessageMenuFor] = useState(null);
@@ -794,9 +795,32 @@ export default function App() {
     const clean = draft.trim();
     if (!clean && !pendingAttachment) return;
     stopTypingNow();
-    socket.emit("message", { text: clean, attachment: pendingAttachment });
+    socket.emit("message", {
+      text: clean,
+      attachment: pendingAttachment,
+      replyTo: replyingTo?.id,
+    });
     setDraft("");
     setPendingAttachment(null);
+    setReplyingTo(null);
+  }
+
+  function startReplyingToMessage(msg) {
+    setReplyingTo(msg);
+    setMessageMenuFor(null);
+    draftTextareaRef.current?.focus();
+  }
+
+  function cancelReplyingToMessage() {
+    setReplyingTo(null);
+  }
+
+  function scrollToMessage(id) {
+    const el = document.getElementById(`message-${id}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("bubble-highlight");
+    setTimeout(() => el.classList.remove("bubble-highlight"), 1200);
   }
 
   function startEditingMessage(msg) {
@@ -1082,12 +1106,26 @@ export default function App() {
           {messages.map((m) => (
             <div
               key={m.id}
+              id={`message-${m.id}`}
               className={`bubble ${m.username === username ? "mine" : "theirs"}${
                 m.deleted_at ? " deleted" : ""
               }`}
             >
               {active?.type === "group" && !m.deleted_at && (
                 <div className="bubble-name">{m.username}</div>
+              )}
+
+              {!m.deleted_at && m.reply_to && (
+                <button
+                  type="button"
+                  className="bubble-quote"
+                  onClick={() => scrollToMessage(m.reply_to.id)}
+                >
+                  <span className="bubble-quote-name">{m.reply_to.username}</span>
+                  <span className="bubble-quote-text">
+                    {m.reply_to.deleted ? "ההודעה נמחקה" : m.reply_to.text || "קובץ מצורף"}
+                  </span>
+                </button>
               )}
 
               {m.deleted_at ? (
@@ -1173,7 +1211,7 @@ export default function App() {
                       <span className="bubble-edited"> · נערך</span>
                     )}
                   </span>
-                  {!m.deleted_at && m.username === username && (
+                  {!m.deleted_at && (
                     <div
                       className="menu-wrap bubble-menu-wrap"
                       ref={m.id === messageMenuFor ? messageMenuRef : null}
@@ -1190,14 +1228,19 @@ export default function App() {
                       </button>
                       {messageMenuFor === m.id && (
                         <div className="menu-dropdown">
-                          {m.text && !m.attachment && (
+                          <button type="button" onClick={() => startReplyingToMessage(m)}>
+                            הגיבי
+                          </button>
+                          {m.username === username && m.text && !m.attachment && (
                             <button type="button" onClick={() => startEditingMessage(m)}>
                               עריכה
                             </button>
                           )}
-                          <button type="button" onClick={() => handleDeleteMessage(m)}>
-                            מחיקה
-                          </button>
+                          {m.username === username && (
+                            <button type="button" onClick={() => handleDeleteMessage(m)}>
+                              מחיקה
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1222,6 +1265,25 @@ export default function App() {
         </main>
 
         {attachmentError && <div className="join-error composer-error">{attachmentError}</div>}
+
+        {replyingTo && (
+          <div className="reply-preview">
+            <div className="reply-preview-body">
+              <span className="reply-preview-name">בתגובה ל{replyingTo.username}</span>
+              <span className="reply-preview-text">
+                {replyingTo.text || "קובץ מצורף"}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="reply-preview-cancel"
+              aria-label="ביטול תגובה"
+              onClick={cancelReplyingToMessage}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {pendingAttachment && (
           <div className="pending-attachment">

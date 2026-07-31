@@ -54,6 +54,7 @@ async function init() {
       attachment_size INTEGER
     )
   `);
+  await query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to_id INTEGER REFERENCES messages(id)`);
 
   await query(`
     CREATE TABLE IF NOT EXISTS message_reactions (
@@ -594,7 +595,33 @@ function rowToMessage(row) {
           }
         : null,
     reactions: row.reactions || [],
+    reply_to_id: row.reply_to_id || null,
   };
+}
+
+async function attachReplyPreviews(messages) {
+  const ids = [...new Set(messages.map((m) => m.reply_to_id).filter(Boolean))];
+  if (ids.length === 0) return messages.map((m) => ({ ...m, reply_to: null }));
+
+  const { rows } = await query(
+    "SELECT id, username, text, deleted_at FROM messages WHERE id = ANY($1::int[])",
+    [ids]
+  );
+  const byId = new Map(
+    rows.map((row) => [
+      row.id,
+      {
+        id: row.id,
+        username: row.username,
+        text: row.deleted_at ? null : row.text,
+        deleted: !!row.deleted_at,
+      },
+    ])
+  );
+  return messages.map((m) => ({
+    ...m,
+    reply_to: m.reply_to_id ? byId.get(m.reply_to_id) || null : null,
+  }));
 }
 
 async function attachReactionsToMessages(messages) {
@@ -647,10 +674,10 @@ async function toggleReaction(messageId, username, emoji) {
   return getMessageReactions(messageId);
 }
 
-async function saveMessage(room, username, text, attachment) {
+async function saveMessage(room, username, text, attachment, replyToId) {
   const { rows } = await query(
-    `INSERT INTO messages (room, username, text, attachment_filename, attachment_original_name, attachment_mime_type, attachment_size)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO messages (room, username, text, attachment_filename, attachment_original_name, attachment_mime_type, attachment_size, reply_to_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id, created_at`,
     [
       room,
@@ -660,9 +687,10 @@ async function saveMessage(room, username, text, attachment) {
       attachment?.originalName ?? null,
       attachment?.mimeType ?? null,
       attachment?.size ?? null,
+      replyToId ?? null,
     ]
   );
-  return rowToMessage({
+  const message = rowToMessage({
     id: rows[0].id,
     room,
     username,
@@ -674,18 +702,22 @@ async function saveMessage(room, username, text, attachment) {
     attachment_original_name: attachment?.originalName ?? null,
     attachment_mime_type: attachment?.mimeType ?? null,
     attachment_size: attachment?.size ?? null,
+    reply_to_id: replyToId ?? null,
   });
+  const [withReply] = await attachReplyPreviews([message]);
+  return withReply;
 }
 
 async function getHistory(room, limit = 100) {
   const { rows } = await query(
     `SELECT id, room, username, text, created_at, edited_at, deleted_at,
-       attachment_filename, attachment_original_name, attachment_mime_type, attachment_size
+       attachment_filename, attachment_original_name, attachment_mime_type, attachment_size, reply_to_id
      FROM messages WHERE room = $1 ORDER BY id DESC LIMIT $2`,
     [room, limit]
   );
-  const messages = await attachReactionsToMessages(rows);
-  return messages.reverse().map(rowToMessage);
+  const withReactions = await attachReactionsToMessages(rows);
+  const messages = withReactions.reverse().map(rowToMessage);
+  return attachReplyPreviews(messages);
 }
 
 async function updateMessage(id, username, text) {
