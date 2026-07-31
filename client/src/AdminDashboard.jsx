@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { authedFetch } from "./api";
 import Modal from "./components/Modal";
 import ConfirmDialog from "./components/ConfirmDialog";
@@ -83,6 +83,27 @@ export default function AdminDashboard({ myUserId, myRole }) {
   const [tasksLoading, setTasksLoading] = useState(true);
   const [tasksError, setTasksError] = useState("");
   const [confirmDeleteTask, setConfirmDeleteTask] = useState(null);
+
+  // One shared "⋮" row menu (keyed "task-5" / "timelog-3") for the tables
+  // below, instead of a separate open/close state and effect per table.
+  const [openRowMenu, setOpenRowMenu] = useState(null);
+  const rowMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (openRowMenu == null) return;
+    function handlePointerDown(e) {
+      if (!rowMenuRef.current?.contains(e.target)) setOpenRowMenu(null);
+    }
+    function handleKeyDown(e) {
+      if (e.key === "Escape") setOpenRowMenu(null);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openRowMenu]);
   const [taskAssignedTo, setTaskAssignedTo] = useState("");
   const [taskStatus, setTaskStatus] = useState("");
   const [taskPriority, setTaskPriority] = useState("");
@@ -672,14 +693,43 @@ export default function AdminDashboard({ myUserId, myRole }) {
                   <td>{task.due_date || <span className="admin-cell-muted">—</span>}</td>
                   <td className="admin-task-row-actions">
                     {myRole === "admin" && (
-                      <>
-                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditTaskForm(task)}>
-                          עריכה
+                      <div
+                        className="menu-wrap"
+                        ref={openRowMenu === `task-${task.id}` ? rowMenuRef : null}
+                      >
+                        <button
+                          type="button"
+                          className="menu-trigger"
+                          aria-label={`פעולות על המשימה "${task.title}"`}
+                          onClick={() =>
+                            setOpenRowMenu((prev) => (prev === `task-${task.id}` ? null : `task-${task.id}`))
+                          }
+                        >
+                          ⋮
                         </button>
-                        <button type="button" className="btn btn-ghost btn-sm btn-danger" onClick={() => handleDeleteTask(task)}>
-                          מחיקה
-                        </button>
-                      </>
+                        {openRowMenu === `task-${task.id}` && (
+                          <div className="menu-dropdown">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenRowMenu(null);
+                                openEditTaskForm(task);
+                              }}
+                            >
+                              עריכה
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenRowMenu(null);
+                                handleDeleteTask(task);
+                              }}
+                            >
+                              מחיקה
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -801,16 +851,43 @@ export default function AdminDashboard({ myUserId, myRole }) {
                       <td>{log.clock_out ? formatTimeOnly(log.clock_out) : <span className="admin-cell-muted">פתוחה</span>}</td>
                       <td>{formatDuration(log.clock_in, log.clock_out)}</td>
                       <td className="admin-task-row-actions">
-                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEditTimeLogForm(log)}>
-                          עריכה
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm btn-danger"
-                          onClick={() => handleDeleteTimeLog(log)}
+                        <div
+                          className="menu-wrap"
+                          ref={openRowMenu === `timelog-${log.id}` ? rowMenuRef : null}
                         >
-                          מחיקה
-                        </button>
+                          <button
+                            type="button"
+                            className="menu-trigger"
+                            aria-label="פעולות על הרשומה"
+                            onClick={() =>
+                              setOpenRowMenu((prev) => (prev === `timelog-${log.id}` ? null : `timelog-${log.id}`))
+                            }
+                          >
+                            ⋮
+                          </button>
+                          {openRowMenu === `timelog-${log.id}` && (
+                            <div className="menu-dropdown">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenRowMenu(null);
+                                  openEditTimeLogForm(log);
+                                }}
+                              >
+                                עריכה
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenRowMenu(null);
+                                  handleDeleteTimeLog(log);
+                                }}
+                              >
+                                מחיקה
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

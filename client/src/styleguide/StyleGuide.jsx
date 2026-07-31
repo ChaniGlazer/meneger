@@ -58,18 +58,13 @@ function Ramp({ name, steps }) {
   );
 }
 
-/** Renders one message bubble in its real thread context. `dm` hides the
-    sender name, matching App.jsx's rule (name shows only in group threads). */
-function Bubble({ mine, name, time, text, edited, deleted, reactions, editing, attachment, dm }) {
+/** Renders one message bubble matching App.jsx's real structure: name (group
+    threads only) above the content, reaction badges, then a footer with the
+    time and - for own messages - a "⋮" menu instead of permanent text links. */
+function Bubble({ mine, name, time, text, edited, deleted, reactions, editing, attachment, dm, menuOpen }) {
   return (
     <div className={`bubble ${mine ? "mine" : "theirs"}${deleted ? " deleted" : ""}`}>
-      <div className="bubble-meta">
-        {!dm && <span className="bubble-name">{name}</span>}
-        <span className="bubble-time">
-          {time}
-          {edited && !deleted && <span className="bubble-edited"> · נערך</span>}
-        </span>
-      </div>
+      {!dm && !deleted && <div className="bubble-name">{name}</div>}
 
       {deleted ? (
         <div className="bubble-text bubble-deleted-text">ההודעה נמחקה</div>
@@ -93,7 +88,7 @@ function Bubble({ mine, name, time, text, edited, deleted, reactions, editing, a
         </>
       )}
 
-      {reactions && (
+      {reactions && !deleted && (
         <div className="bubble-reactions">
           <button type="button" className="reaction-chip">👍 2</button>
           <button type="button" className="reaction-chip mine">❤️ 1</button>
@@ -101,10 +96,25 @@ function Bubble({ mine, name, time, text, edited, deleted, reactions, editing, a
         </div>
       )}
 
-      {!deleted && !editing && (
-        <div className="bubble-actions">
-          <button type="button">עריכה</button>
-          <button type="button">מחיקה</button>
+      {!editing && (
+        <div className="bubble-footer">
+          <span className="bubble-time">
+            {time}
+            {edited && !deleted && <span className="bubble-edited"> · נערך</span>}
+          </span>
+          {mine && !deleted && (
+            <div className="menu-wrap bubble-menu-wrap">
+              <button type="button" className="menu-trigger" aria-label="פעולות נוספות" style={menuOpen ? { opacity: 1 } : undefined}>
+                ⋮
+              </button>
+              {menuOpen && (
+                <div className="menu-dropdown">
+                  <button type="button">עריכה</button>
+                  <button type="button">מחיקה</button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -158,7 +168,7 @@ export default function StyleGuide() {
             <ContrastRow label="success על tint" fg="var(--success)" bg="var(--success-tint)" />
             <ContrastRow label="warning על tint (היה 3.8 ✗)" fg="var(--warning)" bg="var(--warning-tint)" />
             <ContrastRow label="danger על tint" fg="var(--danger)" bg="var(--danger-tint)" />
-            <ContrastRow label="טקסט על בועה שלי (cream)" fg="var(--fg-default)" bg="var(--bubble-mine-bg)" />
+            <ContrastRow label="טקסט על בועה שלי (brand-tint)" fg="var(--fg-default)" bg="var(--bubble-mine-bg)" />
             <ContrastRow label="meta על בועה שלי (היה 3.2 ✗)" fg="var(--fg-muted)" bg="var(--bubble-mine-bg)" />
             <ContrastRow label="סרגל עליון — טקסט" fg="var(--fg-on-inverse)" bg="var(--bg-inverse)" />
             <ContrastRow label="סרגל עליון — משני" fg="var(--fg-on-inverse-muted)" bg="var(--bg-inverse)" />
@@ -287,6 +297,7 @@ export default function StyleGuide() {
           <Bubble mine name="חני" time="09:25" attachment="file" text="מצורף הקובץ" />
           <Bubble name="רבקה" time="09:26" text="עריכה על בועה שהתקבלה" editing />
           <Bubble mine name="חני" time="09:27" text="עריכה על בועה שלי" editing />
+          <Bubble mine name="חני" time="09:29" text="עם תפריט הפעולות פתוח" menuOpen />
           <Bubble
             name="רבקה"
             time="09:28"

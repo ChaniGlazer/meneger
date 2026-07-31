@@ -110,7 +110,9 @@
   --topbar-h:44px; --sidebar-w:280px;
 
   /* component aliases — screen CSS never reaches past the role layer */
-  --bubble-mine-bg: var(--cream);        --bubble-mine-border:#f2d9c2;
+  /* Light blue reads calmer and more standard for "outgoing" than the
+     original cream, which felt swallowed/low-contrast against the canvas. */
+  --bubble-mine-bg: var(--brand-tint);   --bubble-mine-border: var(--brand-tint-hover);
   --bubble-theirs-bg: var(--bg-surface); --bubble-theirs-border: var(--border-subtle);
 }
 
@@ -1103,20 +1105,18 @@ button, input, select, textarea {
      lines don't outrun a comfortable reading measure on a wide window) */
   max-width: min(70%, 62ch);
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background: var(--bubble-theirs-bg);
   border: 1px solid var(--bubble-theirs-border);
   box-shadow: var(--shadow-xs);
   color: var(--fg-default);
 }
 
-/* asymmetric corner as the ownership cue, tied to the visual side each
-   bubble renders on (not to text direction) */
+/* asymmetric corner as the ownership cue (3 corners round, 1 sharp "tail"),
+   tied to the visual side each bubble renders on, not to text direction */
 .bubble.mine {
   align-self: flex-start;   /* under RTL this is the right edge — unchanged on purpose */
   background: var(--bubble-mine-bg);
-  /* Border is load-bearing, not decorative: cream and the canvas are within
-     1.02:1 of each other and differ only in hue. */
   border-color: var(--bubble-mine-border);
   color: var(--fg-default);
   border-bottom-right-radius: var(--radius-xs);
@@ -1129,39 +1129,17 @@ button, input, select, textarea {
   border-bottom-left-radius: var(--radius-xs);
 }
 
-.bubble-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
+.bubble-name {
   font-size: var(--text-xs);
-  /* Was `opacity: .75`, which composited to 3.18:1 on the old fill.
-     System rule: never dim text with opacity; use a token colour. */
+  font-weight: var(--weight-semibold);
   color: var(--fg-muted);
   margin-bottom: var(--space-0-5);
-}
-
-.bubble-name {
-  font-weight: var(--weight-semibold);
-}
-
-.bubble-time {
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-  /* keeps time at the trailing corner even in a DM, where .bubble-name is
-     omitted and it would otherwise be the only (and therefore start-aligned)
-     flex child */
-  margin-inline-start: auto;
 }
 
 .bubble-text {
   font-size: var(--text-md);
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.bubble-edited {
-  font-size: var(--text-xs);
-  color: var(--fg-subtle);
 }
 
 .bubble.deleted {
@@ -1179,33 +1157,118 @@ button, input, select, textarea {
   color: var(--fg-muted);
 }
 
-.bubble-actions {
+/* Time + per-message menu, moved to the bottom corner instead of sitting
+   above the message alongside the name. */
+.bubble-footer {
   display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: var(--space-2);
   margin-top: var(--space-1);
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease-out);
 }
 
-/* focus-within is what makes edit/delete reachable without a mouse. */
-.bubble:hover .bubble-actions,
-.bubble:focus-within .bubble-actions {
+.bubble-time {
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
+  flex-shrink: 0;
+}
+
+.bubble-edited {
+  color: var(--fg-subtle);
+}
+
+/* ============================================================================
+   Overflow menu ("⋮") — one reusable pattern for "a couple of row/item
+   actions that shouldn't sit permanently in view": chat bubbles (replaces
+   two always-visible "עריכה"/"מחיקה" links) and admin table rows (tasks,
+   attendance records). `.menu-wrap--static` skips the hover-to-reveal
+   behaviour for contexts (like a table row) that don't have their own
+   hover/focus-within affordance already driving it.
+   ========================================================================== */
+
+.menu-wrap {
+  position: relative;
+}
+
+.menu-trigger {
+  background: none;
+  border: none;
+  padding: 0 var(--space-1);
+  font-size: var(--text-md);
+  line-height: 1;
+  cursor: pointer;
+  color: var(--fg-muted);
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out);
+}
+
+.menu-trigger:hover {
+  color: var(--fg-default);
+  background: var(--bg-surface-hover);
+}
+
+.menu-dropdown {
+  position: absolute;
+  bottom: calc(100% + var(--space-1));
+  inset-inline-end: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 96px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-1);
+}
+
+.menu-dropdown button {
+  background: none;
+  border: none;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  text-align: start;
+  color: var(--fg-default);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.menu-dropdown button:hover {
+  background: var(--bg-surface-hover);
+}
+
+/* ---- bubble-specific: hover/focus-within reveal, trigger sits after the time ---- */
+
+.bubble-menu-wrap {
+  margin-inline-start: auto;
+}
+
+.bubble-menu-wrap .menu-trigger {
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out);
+}
+
+.bubble:hover .bubble-menu-wrap .menu-trigger,
+.bubble:focus-within .bubble-menu-wrap .menu-trigger,
+.bubble-menu-wrap:has(.menu-dropdown) .menu-trigger {
   opacity: 1;
 }
 
-.bubble-actions button {
-  background: none;
-  border: none;
-  padding: 0;
-  font-size: var(--text-xs);
-  cursor: pointer;
-  color: var(--fg-muted);
-  text-decoration: underline;
-  transition: color var(--dur-fast) var(--ease-out);
+/* Table-row menus have no bubble to hover; the trigger is always visible,
+   dimmed on the resting row and full-strength once the row itself is
+   hovered (the row already has a hover background). */
+.admin-table .menu-trigger {
+  opacity: .55;
 }
 
-.bubble-actions button:hover {
-  color: var(--fg-default);
+.admin-table tr:hover .menu-trigger,
+.admin-table .menu-wrap:has(.menu-dropdown) .menu-trigger {
+  opacity: 1;
 }
 
 /* ---- reactions ---- */
@@ -1219,14 +1282,17 @@ button, input, select, textarea {
 }
 
 .reaction-chip {
-  /* Explicit colours, never `inherit` — inheriting was the bug. */
-  border: 1px solid var(--border-default);
+  /* Explicit colours, never `inherit` — inheriting was the bug. A shadow
+     (rather than just a border) is what reads as a "floating badge" rather
+     than part of the bubble's own surface. */
+  border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
   color: var(--fg-default);
   border-radius: var(--radius-full);
   padding: 0 var(--space-2);
   font-size: var(--text-xs);
   cursor: pointer;
+  box-shadow: var(--shadow-sm);
   transition: background-color var(--dur-fast) var(--ease-out),
               border-color var(--dur-fast) var(--ease-out);
 }

@@ -157,6 +157,7 @@ export default function App() {
   const [confirmDeleteMessage, setConfirmDeleteMessage] = useState(null);
   const [removedNotice, setRemovedNotice] = useState(false);
   const [reactionPickerFor, setReactionPickerFor] = useState(null);
+  const [messageMenuFor, setMessageMenuFor] = useState(null);
 
   const bottomRef = useRef(null);
   const activeIdRef = useRef(null);
@@ -166,6 +167,7 @@ export default function App() {
   const typingStopTimerRef = useRef(null);
   const typingExpiryTimersRef = useRef(new Map());
   const reactionPickerRef = useRef(null);
+  const messageMenuRef = useRef(null);
 
   useEffect(() => {
     activeIdRef.current = active?.id ?? null;
@@ -191,6 +193,27 @@ export default function App() {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [reactionPickerFor]);
+
+  // Same pattern for the per-message "⋮" menu (edit/delete).
+  useEffect(() => {
+    if (messageMenuFor == null) return;
+
+    function handlePointerDown(e) {
+      if (!messageMenuRef.current?.contains(e.target)) {
+        setMessageMenuFor(null);
+      }
+    }
+    function handleKeyDown(e) {
+      if (e.key === "Escape") setMessageMenuFor(null);
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [messageMenuFor]);
 
   useEffect(() => {
     usernameRef.current = username;
@@ -737,6 +760,7 @@ export default function App() {
     setMessageActionError("");
     setEditingMessageId(msg.id);
     setEditingText(msg.text || "");
+    setMessageMenuFor(null);
   }
 
   function cancelEditingMessage() {
@@ -755,6 +779,7 @@ export default function App() {
 
   function handleDeleteMessage(msg) {
     setConfirmDeleteMessage(msg);
+    setMessageMenuFor(null);
   }
 
   function confirmDeleteMessageNow() {
@@ -1018,17 +1043,9 @@ export default function App() {
                 m.deleted_at ? " deleted" : ""
               }`}
             >
-              <div className="bubble-meta">
-                {active?.type === "group" && (
-                  <span className="bubble-name">{m.username}</span>
-                )}
-                <span className="bubble-time">
-                  {formatTime(m.created_at)}
-                  {m.edited_at && !m.deleted_at && (
-                    <span className="bubble-edited"> · נערך</span>
-                  )}
-                </span>
-              </div>
+              {active?.type === "group" && !m.deleted_at && (
+                <div className="bubble-name">{m.username}</div>
+              )}
 
               {m.deleted_at ? (
                 <div className="bubble-text bubble-deleted-text">ההודעה נמחקה</div>
@@ -1105,24 +1122,43 @@ export default function App() {
                 </div>
               )}
 
-              {!m.deleted_at && m.username === username && editingMessageId !== m.id && (
-                <div className="bubble-actions">
-                  {m.text && !m.attachment && (
-                    <button
-                      type="button"
-                      aria-label={`עריכת הודעה מ-${formatTime(m.created_at)}`}
-                      onClick={() => startEditingMessage(m)}
+              {editingMessageId !== m.id && (
+                <div className="bubble-footer">
+                  <span className="bubble-time">
+                    {formatTime(m.created_at)}
+                    {m.edited_at && !m.deleted_at && (
+                      <span className="bubble-edited"> · נערך</span>
+                    )}
+                  </span>
+                  {!m.deleted_at && m.username === username && (
+                    <div
+                      className="menu-wrap bubble-menu-wrap"
+                      ref={m.id === messageMenuFor ? messageMenuRef : null}
                     >
-                      עריכה
-                    </button>
+                      <button
+                        type="button"
+                        className="menu-trigger"
+                        aria-label="פעולות נוספות על ההודעה"
+                        onClick={() =>
+                          setMessageMenuFor((prev) => (prev === m.id ? null : m.id))
+                        }
+                      >
+                        ⋮
+                      </button>
+                      {messageMenuFor === m.id && (
+                        <div className="menu-dropdown">
+                          {m.text && !m.attachment && (
+                            <button type="button" onClick={() => startEditingMessage(m)}>
+                              עריכה
+                            </button>
+                          )}
+                          <button type="button" onClick={() => handleDeleteMessage(m)}>
+                            מחיקה
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
-                  <button
-                    type="button"
-                    aria-label={`מחיקת הודעה מ-${formatTime(m.created_at)}`}
-                    onClick={() => handleDeleteMessage(m)}
-                  >
-                    מחיקה
-                  </button>
                 </div>
               )}
             </div>
