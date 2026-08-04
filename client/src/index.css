@@ -941,6 +941,7 @@ button, input, select, textarea {
   justify-content: space-between;
   gap: var(--space-2);
   width: 100%;
+  min-width: 0;
   border: none;
   background: none;
   padding: var(--space-1);
@@ -950,6 +951,14 @@ button, input, select, textarea {
   cursor: pointer;
   text-align: start;
   transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.inbox-list-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inbox-task-list button:hover,

@@ -144,7 +144,7 @@ export default function Inbox({
                   {upcomingTasks.map((t) => (
                     <li key={t.id}>
                       <button type="button" onClick={onEnterTasks}>
-                        <span dir="auto">{t.title}</span>
+                        <span className="inbox-list-text" dir="auto">{t.title}</span>
                         {t.due_date && <span className="inbox-task-due">{t.due_date}</span>}
                       </button>
                     </li>
@@ -168,7 +168,7 @@ export default function Inbox({
               {conversationsToShow.map((row) => (
                 <li key={row.id}>
                   <button type="button" onClick={() => onSelectConversation(row)}>
-                    <span dir="auto">{row.name}</span>
+                    <span className="inbox-list-text" dir="auto">{row.name}</span>
                     {unreadCounts[row.id] > 0 && (
                       <span className="unread-badge">{unreadCounts[row.id]}</span>
                     )}
