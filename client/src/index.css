@@ -882,13 +882,16 @@ button, input, select, textarea {
 }
 
 .inbox-stat-row {
-  display: flex;
+  /* 4 single-word Hebrew labels (none of them can shrink below their own
+     word width) never fit in one row once the card is at its narrow end —
+     a 2x2 grid gives each tile roughly double the room instead. */
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
 
 .inbox-stat {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
