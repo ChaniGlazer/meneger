@@ -1284,15 +1284,19 @@ export default function App() {
         )}
 
         <main className="messages" role="log" aria-live="polite">
-          {messages.map((m) => (
+          {messages.map((m, i) => {
+            const isGroupStart = i === 0 || messages[i - 1].username !== m.username;
+            const isGroupEnd =
+              i === messages.length - 1 || messages[i + 1].username !== m.username;
+            return (
             <div
               key={m.id}
               id={`message-${m.id}`}
               className={`bubble ${m.username === username ? "mine" : "theirs"}${
                 m.deleted_at ? " deleted" : ""
-              }`}
+              }${isGroupStart ? " group-start" : ""}${isGroupEnd ? " group-end" : ""}`}
             >
-              {active?.type === "group" && !m.deleted_at && (
+              {active?.type === "group" && !m.deleted_at && isGroupStart && (
                 <div className="bubble-name">{m.username}</div>
               )}
 
@@ -1344,8 +1348,8 @@ export default function App() {
                 </>
               )}
 
-              {!m.deleted_at && editingMessageId !== m.id && (
-                <div className="bubble-reactions" ref={m.id === reactionPickerFor ? reactionPickerRef : null}>
+              {!m.deleted_at && editingMessageId !== m.id && groupReactions(m.reactions).length > 0 && (
+                <div className="bubble-reactions">
                   {groupReactions(m.reactions).map(({ emoji, usernames }) => (
                     <button
                       key={emoji}
@@ -1357,30 +1361,6 @@ export default function App() {
                       <EmojiText text={emoji} /> {usernames.length}
                     </button>
                   ))}
-                  <button
-                    type="button"
-                    className="reaction-add"
-                    aria-label="הוספת ריאקציה"
-                    onClick={() =>
-                      setReactionPickerFor((prev) => (prev === m.id ? null : m.id))
-                    }
-                  >
-                    <EmojiText text="😊" />+
-                  </button>
-                  {reactionPickerFor === m.id && (
-                    <div className="reaction-picker">
-                      {REACTION_EMOJIS.map((emoji) => (
-                        <button
-                          key={emoji}
-                          type="button"
-                          aria-label={emoji}
-                          onClick={() => handleToggleReaction(m.id, emoji)}
-                        >
-                          <EmojiText text={emoji} />
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -1392,6 +1372,37 @@ export default function App() {
                       <span className="bubble-edited"> · נערך</span>
                     )}
                   </span>
+                  {!m.deleted_at && (
+                    <div
+                      className="menu-wrap bubble-reaction-wrap"
+                      ref={m.id === reactionPickerFor ? reactionPickerRef : null}
+                    >
+                      <button
+                        type="button"
+                        className="menu-trigger reaction-trigger"
+                        aria-label="הוספת ריאקציה"
+                        onClick={() =>
+                          setReactionPickerFor((prev) => (prev === m.id ? null : m.id))
+                        }
+                      >
+                        <EmojiText text="😊" />
+                      </button>
+                      {reactionPickerFor === m.id && (
+                        <div className="reaction-picker">
+                          {REACTION_EMOJIS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              aria-label={emoji}
+                              onClick={() => handleToggleReaction(m.id, emoji)}
+                            >
+                              <EmojiText text={emoji} />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {!m.deleted_at && (
                     <div
                       className="menu-wrap bubble-menu-wrap"
@@ -1429,7 +1440,8 @@ export default function App() {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
           {typingUsers.length > 0 && (
             <div className="typing-indicator">
               {typingUsers.length === 1

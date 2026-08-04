@@ -1122,7 +1122,9 @@ button, input, select, textarea {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  /* tight base rhythm within a sender's own run of messages; a turn change
+     (.group-start) adds its own margin-top below to separate speakers */
+  gap: var(--space-1);
   background: var(--bg-canvas);
 }
 
@@ -1130,7 +1132,7 @@ button, input, select, textarea {
   /* both a % cap (so it never spans the whole thread) and a ch cap (so long
      lines don't outrun a comfortable reading measure on a wide window) */
   max-width: min(70%, 62ch);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-xl);
   background: var(--bubble-theirs-bg);
   border: 1px solid var(--bubble-theirs-border);
@@ -1138,13 +1140,23 @@ button, input, select, textarea {
   color: var(--fg-default);
 }
 
+.messages > .bubble.group-start:not(:first-child) {
+  margin-top: var(--space-2);
+}
+
 /* asymmetric corner as the ownership cue (3 corners round, 1 sharp "tail"),
-   tied to the visual side each bubble renders on, not to text direction */
+   tied to the visual side each bubble renders on, not to text direction.
+   Only the last bubble of a consecutive run gets the tail — mid-run bubbles
+   stay fully rounded, the same way Telegram/iMessage mark the end of a turn
+   rather than every line in it. */
 .bubble.mine {
   align-self: flex-start;   /* under RTL this is the right edge — unchanged on purpose */
   background: var(--bubble-mine-bg);
   border-color: var(--bubble-mine-border);
   color: var(--fg-default);
+}
+
+.bubble.mine.group-end {
   border-bottom-right-radius: var(--radius-xs);
 }
 
@@ -1152,6 +1164,9 @@ button, input, select, textarea {
   align-self: flex-end;
   background: var(--bubble-theirs-bg);
   color: var(--fg-default);
+}
+
+.bubble.theirs.group-end {
   border-bottom-left-radius: var(--radius-xs);
 }
 
@@ -1159,7 +1174,7 @@ button, input, select, textarea {
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   color: var(--fg-muted);
-  margin-bottom: var(--space-0-5);
+  margin-bottom: var(--space-1);
 }
 
 .bubble-text {
@@ -1321,13 +1336,16 @@ button, input, select, textarea {
   background: var(--bg-surface-hover);
 }
 
-/* ---- bubble-specific: hover/focus-within reveal, trigger sits after the time ---- */
+/* ---- bubble-specific: hover/focus-within reveal, triggers sit after the time.
+   The reaction trigger (😊) shares this treatment with the "⋮" menu — both
+   are affordances, not state, so neither should sit on screen permanently. */
 
 .bubble-menu-wrap {
   margin-inline-start: auto;
 }
 
-.bubble-menu-wrap .menu-trigger {
+.bubble-menu-wrap .menu-trigger,
+.bubble-reaction-wrap .menu-trigger {
   opacity: 0;
   transition: opacity var(--dur-fast) var(--ease-out),
               color var(--dur-fast) var(--ease-out),
@@ -1336,7 +1354,10 @@ button, input, select, textarea {
 
 .bubble:hover .bubble-menu-wrap .menu-trigger,
 .bubble:focus-within .bubble-menu-wrap .menu-trigger,
-.bubble-menu-wrap:has(.menu-dropdown) .menu-trigger {
+.bubble-menu-wrap:has(.menu-dropdown) .menu-trigger,
+.bubble:hover .bubble-reaction-wrap .menu-trigger,
+.bubble:focus-within .bubble-reaction-wrap .menu-trigger,
+.bubble-reaction-wrap:has(.reaction-picker) .menu-trigger {
   opacity: 1;
 }
 
@@ -1388,20 +1409,11 @@ button, input, select, textarea {
   color: var(--accent-fg-on-tint);
 }
 
-.reaction-add {
-  border: none;
-  background: none;
-  font-size: var(--text-xs);
-  cursor: pointer;
-  color: var(--fg-muted);
-  transition: color var(--dur-fast) var(--ease-out);
-}
-
-.reaction-add:hover {
-  color: var(--fg-default);
-}
-
 .reaction-picker {
+  position: absolute;
+  bottom: calc(100% + var(--space-1));
+  inset-inline-end: 0;
+  z-index: 5;
   display: flex;
   gap: var(--space-1);
   background: var(--bg-surface);
