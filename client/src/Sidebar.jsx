@@ -32,9 +32,8 @@ export default function Sidebar({
         </div>
         <div>
           <div className="sidebar-username" dir="auto">{username}</div>
-          <div className="sidebar-role-badge">
-            {myRole === "admin" ? "מנהלת" : myRole === "team_lead" ? "ראשת צוות" : "עובדת"}
-          </div>
+          {myRole === "admin" && <div className="sidebar-role-badge">מנהלת</div>}
+          {myRole === "team_lead" && <div className="sidebar-role-badge">ראשת צוות</div>}
         </div>
       </div>
 
