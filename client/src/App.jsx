@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
-import { api, authedFetch, uploadFile } from "./api";
+import { api, authedFetch, uploadFile, setUnauthorizedHandler, logout as logoutRequest } from "./api";
 import TimeClock from "./TimeClock";
 import AdminDashboard from "./AdminDashboard";
 import Sidebar from "./Sidebar";
@@ -78,6 +78,11 @@ function playPing() {
     // audio not available; notification still shows visually
   }
 }
+
+// Mirrors the server's multer limit (server/upload.js) — checking here too
+// means an oversized file is rejected instantly instead of after uploading
+// the whole thing over the network only to have the server reject it.
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -176,6 +181,7 @@ export default function App() {
   const bottomRef = useRef(null);
   const activeIdRef = useRef(null);
   const usernameRef = useRef("");
+  const myUserIdRef = useRef(null);
   const toastTimerRef = useRef(null);
   const typingSentRef = useRef(false);
   const typingStopTimerRef = useRef(null);
@@ -272,6 +278,10 @@ export default function App() {
   useEffect(() => {
     usernameRef.current = username;
   }, [username]);
+
+  useEffect(() => {
+    myUserIdRef.current = myUserId;
+  }, [myUserId]);
 
   useEffect(() => {
     const total = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
@@ -386,6 +396,10 @@ export default function App() {
 
   async function handleUploadTaskAttachment(taskId, file) {
     setTasksError("");
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      setTasksError(`הקובץ גדול מדי (מקסימום ${formatFileSize(MAX_ATTACHMENT_SIZE)})`);
+      return;
+    }
     setUploadingTaskId(taskId);
     try {
       const data = await uploadFile(`tasks/${taskId}/attachments`, file);
@@ -414,7 +428,7 @@ export default function App() {
     });
   }
 
-  function enterInbox(userId = myUserId) {
+  function enterInbox(userId = myUserIdRef.current) {
     setStage("inbox");
     setActive(null);
     setMessages([]);
@@ -449,7 +463,6 @@ export default function App() {
         setMyUserId(id);
         setMyRole(role);
         socket.connect();
-        socket.emit("authenticate", { token });
         enterInbox(id);
       })
       .catch(() => {
@@ -459,13 +472,30 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // A 401 from any authedFetch/uploadFile call (expired/invalid token)
+    // used to just throw a generic error, leaving whichever screen made the
+    // call stuck forever — this forces the same reset as a real logout.
+    setUnauthorizedHandler(() => forceSessionExpired("החיבור פג — יש להתחבר מחדש"));
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
+  useEffect(() => {
+    // Fires on the initial connect AND on every automatic reconnect
+    // (network blip, laptop sleep, server restart) — socket.io-client
+    // reconnects with a fresh socket.id, and the server has no client
+    // state for that id until we authenticate again. Without this, a
+    // reconnect leaves the chat silently unable to send/receive.
+    socket.on("connect", () => {
+      const token = localStorage.getItem("chat-token");
+      if (!token) return;
+      socket.emit("authenticate", { token });
+      if (activeIdRef.current) {
+        socket.emit("open-conversation", { conversationId: activeIdRef.current });
+      }
+    });
+
     socket.on("auth-error", () => {
-      localStorage.removeItem("chat-token");
-      setUsername("");
-      setConversations([]);
-      setActive(null);
-      setMessages([]);
-      setStage("auth");
+      forceSessionExpired("החיבור פג — יש להתחבר מחדש");
     });
 
     socket.on("open-error", (message) => setFormError(message));
@@ -578,6 +608,7 @@ export default function App() {
     });
 
     return () => {
+      socket.off("connect");
       socket.off("auth-error");
       socket.off("open-error");
       socket.off("opened");
@@ -610,7 +641,6 @@ export default function App() {
       setMyUserId(data.id);
       setMyRole(data.role);
       socket.connect();
-      socket.emit("authenticate", { token: data.token });
       enterInbox(data.id);
     } catch (err) {
       setAuthError(err.message);
@@ -826,6 +856,10 @@ export default function App() {
     e.target.value = "";
     if (!file) return;
     setAttachmentError("");
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      setAttachmentError(`הקובץ גדול מדי (מקסימום ${formatFileSize(MAX_ATTACHMENT_SIZE)})`);
+      return;
+    }
     setAttachmentUploading(true);
     try {
       const data = await uploadFile("uploads", file);
@@ -934,6 +968,7 @@ export default function App() {
   function handleLogout() {
     stopTypingNow();
     socket.disconnect();
+    logoutRequest(localStorage.getItem("chat-token"));
     localStorage.removeItem("chat-token");
     setUsername("");
     setMyUserId(null);
@@ -944,6 +979,15 @@ export default function App() {
     setUnreadCounts({});
     setTasks([]);
     setStage("auth");
+  }
+
+  // Same reset as handleLogout, but for the cases where the app itself
+  // discovers the session is dead (expired/invalid token) rather than the
+  // user clicking "logout" — surfaces a message on the login screen instead
+  // of leaving the previous screen stuck on a generic load error.
+  function forceSessionExpired(message) {
+    handleLogout();
+    setAuthError(message);
   }
 
   function handleToastClick() {

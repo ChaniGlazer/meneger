@@ -160,14 +160,69 @@ const ROLES = ["employee", "team_lead", "admin"];
 const TASK_PRIORITIES = ["low", "medium", "high"];
 const TASK_STATUSES = ["todo", "in_progress", "review", "done"];
 
-async function createUser(username, passwordHash, email) {
-  const { rows: countRows } = await query("SELECT COUNT(*)::int AS count FROM users");
-  const role = countRows[0].count === 0 ? "admin" : "employee";
-  const { rows } = await query(
-    "INSERT INTO users (username, password_hash, role, email) VALUES ($1, $2, $3, $4) RETURNING id, username, role, email",
-    [username, passwordHash, role, email ?? null]
-  );
-  return rows[0];
+// Registration touches three things that must move together: "is this the
+// first user" (bootstraps as admin, skips the invite requirement), the
+// invite's used/unused state, and the new row in `users`. Done as separate
+// queries (the old createUser()+findInvite()+markInviteUsed() sequence),
+// two concurrent registrations could both see "not used yet" and both
+// pass, or both see "zero users" and both become admin. An advisory lock
+// held for the whole transaction serializes registrations against each
+// other so those checks and the writes that follow them are atomic.
+async function registerUser({ username, passwordHash, email }) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('chat_app_registration'))");
+
+    const { rows: existingRows } = await client.query(
+      "SELECT id FROM users WHERE username = $1",
+      [username]
+    );
+    if (existingRows[0]) {
+      throw Object.assign(new Error("שם המשתמשת הזה כבר תפוס"), { code: "USERNAME_TAKEN" });
+    }
+
+    const { rows: countRows } = await client.query("SELECT COUNT(*)::int AS count FROM users");
+    const isFirstUser = countRows[0].count === 0;
+
+    if (!isFirstUser) {
+      const { rows: inviteRows } = await client.query(
+        "SELECT * FROM invited_emails WHERE email = $1",
+        [email]
+      );
+      const invite = inviteRows[0];
+      if (!invite) {
+        throw Object.assign(new Error("כתובת האימייל הזו לא הוזמנה למערכת"), {
+          code: "NOT_INVITED",
+        });
+      }
+      if (invite.used_by) {
+        throw Object.assign(new Error("כתובת האימייל הזו כבר נוצלה"), { code: "INVITE_USED" });
+      }
+    }
+
+    const role = isFirstUser ? "admin" : "employee";
+    const { rows } = await client.query(
+      "INSERT INTO users (username, password_hash, role, email) VALUES ($1, $2, $3, $4) RETURNING id, username, role, email",
+      [username, passwordHash, role, email ?? null]
+    );
+    const user = rows[0];
+
+    if (!isFirstUser) {
+      await client.query(
+        "UPDATE invited_emails SET used_by = $1, used_at = now() WHERE email = $2",
+        [user.id, email]
+      );
+    }
+
+    await client.query("COMMIT");
+    return user;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 async function updateUserPassword(username, passwordHash) {
@@ -179,16 +234,6 @@ async function findUser(username) {
     "SELECT id, username, password_hash, role, team_id FROM users WHERE username = $1",
     [username]
   );
-  return rows[0];
-}
-
-async function countUsers() {
-  const { rows } = await query("SELECT COUNT(*)::int AS count FROM users");
-  return rows[0].count;
-}
-
-async function findInvite(email) {
-  const { rows } = await query("SELECT * FROM invited_emails WHERE email = $1", [email]);
   return rows[0];
 }
 
@@ -214,10 +259,6 @@ async function listInvites() {
 
 async function removeInvite(email) {
   await query("DELETE FROM invited_emails WHERE email = $1", [email]);
-}
-
-async function markInviteUsed(email, userId) {
-  await query("UPDATE invited_emails SET used_by = $1, used_at = now() WHERE email = $2", [userId, email]);
 }
 
 async function findUserByEmail(email) {
@@ -872,7 +913,7 @@ module.exports = {
   deleteMessage,
   toggleReaction,
   getMessageRoom,
-  createUser,
+  registerUser,
   findUser,
   updateUserPassword,
   findUserById,
@@ -886,12 +927,9 @@ module.exports = {
   deleteTeam,
   getTeamMembers,
   setUserTeamId,
-  countUsers,
-  findInvite,
   addInvite,
   listInvites,
   removeInvite,
-  markInviteUsed,
   findUserByEmail,
   createPasswordReset,
   findPasswordReset,

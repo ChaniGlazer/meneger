@@ -13,7 +13,7 @@ const {
   deleteMessage,
   toggleReaction,
   getMessageRoom,
-  createUser,
+  registerUser,
   findUser,
   updateUserPassword,
   findUserById,
@@ -27,12 +27,9 @@ const {
   deleteTeam,
   getTeamMembers,
   setUserTeamId,
-  countUsers,
-  findInvite,
   addInvite,
   listInvites,
   removeInvite,
-  markInviteUsed,
   findUserByEmail,
   createPasswordReset,
   findPasswordReset,
@@ -122,27 +119,21 @@ app.post(
     if (!EMAIL_RE.test(email)) {
       return res.status(400).json({ error: "יש להזין כתובת אימייל תקינה" });
     }
-    if (await findUser(username)) {
-      return res.status(409).json({ error: "שם המשתמשת הזה כבר תפוס" });
-    }
-
     // The very first account bootstraps the system as admin and doesn't need
     // an invite; every account after that must be pre-approved by an admin.
-    const isFirstUser = (await countUsers()) === 0;
-    if (!isFirstUser) {
-      const invite = await findInvite(email);
-      if (!invite) {
-        return res.status(403).json({ error: "כתובת האימייל הזו לא הוזמנה למערכת" });
-      }
-      if (invite.used_by) {
-        return res.status(409).json({ error: "כתובת האימייל הזו כבר נוצלה" });
-      }
+    // registerUser() runs the username/invite checks and the insert inside
+    // one locked transaction, so two concurrent registrations can't both
+    // become "the first admin" or both consume the same invite.
+    let user;
+    try {
+      user = await registerUser({ username, passwordHash: hashPassword(password), email });
+    } catch (err) {
+      if (err.code === "USERNAME_TAKEN") return res.status(409).json({ error: err.message });
+      if (err.code === "NOT_INVITED") return res.status(403).json({ error: err.message });
+      if (err.code === "INVITE_USED") return res.status(409).json({ error: err.message });
+      throw err;
     }
 
-    const user = await createUser(username, hashPassword(password), email);
-    if (!isFirstUser) {
-      await markInviteUsed(email, user.id);
-    }
     const token = createToken();
     sessions.set(token, user.username);
     res.status(201).json({ token, id: user.id, username: user.username, role: user.role });
@@ -171,8 +162,21 @@ function requireAuth(req, res, next) {
   const username = sessions.get(token);
   if (!username) return res.status(401).json({ error: "לא מחוברת" });
   req.username = username;
+  req.token = token;
   next();
 }
+
+// The only way to invalidate a token before now was restarting the whole
+// server (logging everyone out at once) — this lets a single session end
+// on its own, e.g. so a stolen/shared token can be revoked by logging out.
+app.post(
+  "/api/logout",
+  requireAuth,
+  ah(async (req, res) => {
+    sessions.delete(req.token);
+    res.json({ ok: true });
+  })
+);
 
 const requireAdmin = ah(async (req, res, next) => {
   const user = await findUser(req.username);
@@ -571,6 +575,18 @@ app.get(
   })
 );
 
+// A task is visible/usable by a plain employee only if she's an explicit
+// assignee or the task belongs to her team — same rule GET /api/tasks
+// already applies via listTasks()'s visibleToUserId/visibleToTeamId.
+// Admins can always access every task.
+function canAccessTask(user, task) {
+  if (!user || !task) return false;
+  if (user.role === "admin") return true;
+  if ((task.assignees || []).some((a) => a.id === user.id)) return true;
+  if (user.team_id != null && task.team_id === user.team_id) return true;
+  return false;
+}
+
 app.get(
   "/api/tasks/:id",
   requireAuth,
@@ -578,6 +594,10 @@ app.get(
     const id = parseId(req.params.id);
     const task = id !== null && (await getTaskById(id));
     if (!task) return res.status(404).json({ error: "המשימה לא נמצאה" });
+    const requestingUser = await findUser(req.username);
+    if (!canAccessTask(requestingUser, task)) {
+      return res.status(403).json({ error: "אין לך גישה למשימה הזו" });
+    }
     res.json({ task: serializeTask(task) });
   })
 );
@@ -590,13 +610,17 @@ app.patch(
     const existing = id !== null && (await getTaskById(id));
     if (!existing) return res.status(404).json({ error: "המשימה לא נמצאה" });
 
+    const requestingUser = await findUser(req.username);
     const editorOnlyFields = ["title", "description", "due_date", "priority", "assigned_to", "team_id"];
     const requestsEditorFields = editorOnlyFields.some((f) => req.body?.[f] !== undefined);
     if (requestsEditorFields) {
-      const requestingUser = await findUser(req.username);
       if (!requestingUser || requestingUser.role !== "admin") {
         return res.status(403).json({ error: "אין הרשאת מנהלת" });
       }
+    } else if (!canAccessTask(requestingUser, existing)) {
+      // Non-editor fields (currently just `status`) may be changed by
+      // anyone who can see the task — but only if she can see it.
+      return res.status(403).json({ error: "אין לך גישה למשימה הזו" });
     }
 
     const fields = {};
@@ -737,6 +761,10 @@ app.post(
     const task = id !== null && (await getTaskById(id));
     if (!task) {
       return res.status(404).json({ error: "המשימה לא נמצאה" });
+    }
+    const requestingUser = await findUser(req.username);
+    if (!canAccessTask(requestingUser, task)) {
+      return res.status(403).json({ error: "אין לך גישה למשימה הזו" });
     }
     if (!req.file) {
       return res.status(400).json({ error: "לא נבחר קובץ" });
