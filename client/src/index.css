@@ -2119,7 +2119,7 @@ button, input, select, textarea {
    ========================================================================== */
 
 .btn,
-.join-card button,                  /* retires: Stage 1 */
+.join-card button:not(.link-button),                  /* retires: Stage 1 */
 .composer button {                  /* retires: Stage 5 */
   display: inline-flex;
   align-items: center;
@@ -2138,26 +2138,26 @@ button, input, select, textarea {
 }
 
 .btn:disabled,
-.join-card button:disabled,
+.join-card button:not(.link-button):disabled,
 .composer button:disabled {
   opacity: .55;
   cursor: default;
 }
 
 .btn-primary,
-.join-card button,                  /* retires: Stage 1 */
+.join-card button:not(.link-button),                  /* retires: Stage 1 */
 .composer button {                  /* retires: Stage 5 */
   background: var(--brand);
   color: var(--fg-on-brand);
 }
 
 .btn-primary:hover:not(:disabled),
-.join-card button:hover:not(:disabled),
+.join-card button:not(.link-button):hover:not(:disabled),
 .composer button:hover:not(:disabled) {
   background: var(--brand-hover);
 }
 
-.join-card button {
+.join-card button:not(.link-button) {
   width: 100%;
   padding: var(--space-3) var(--space-4);
   font-size: var(--text-md);
