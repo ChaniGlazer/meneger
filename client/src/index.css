@@ -11,6 +11,11 @@
    ========================================================================== */
 
 :root {
+  /* App is light-only. Without this, some mobile browsers' auto-dark-mode
+     repaints transparent buttons (e.g. the emoji picker items) with a
+     synthetic dark fill instead of leaving them as designed. */
+  color-scheme: light;
+
   --font-sans: "Heebo", "Segoe UI", "Noto Sans Hebrew", Arial, sans-serif;
 
   /* neutrals — cool/navy-tinted so the UI reads of-a-piece with the mark */
