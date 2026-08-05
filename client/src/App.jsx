@@ -61,10 +61,16 @@ function loadLastSeen() {
   }
 }
 
+// Reused across calls instead of created fresh each time — one per
+// notification would otherwise accumulate un-closed contexts over a long
+// session with many incoming messages.
+let pingAudioCtx = null;
+
 function playPing() {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new Ctx();
+    if (!pingAudioCtx) pingAudioCtx = new Ctx();
+    const ctx = pingAudioCtx;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -666,8 +672,8 @@ export default function App() {
   async function handleResetSubmit(e) {
     e.preventDefault();
     setResetError("");
-    if (resetPassword1.length < 6) {
-      setResetError("הסיסמה חייבת להכיל לפחות 6 תווים");
+    if (resetPassword1.length < 8) {
+      setResetError("הסיסמה חייבת להכיל לפחות 8 תווים");
       return;
     }
     if (resetPassword1 !== resetPassword2) {
@@ -1016,7 +1022,8 @@ export default function App() {
             <input
               autoFocus
               type="password"
-              placeholder="סיסמה חדשה (לפחות 6 תווים)"
+              placeholder="סיסמה חדשה (לפחות 8 תווים)"
+              aria-label="סיסמה חדשה (לפחות 8 תווים)"
               value={resetPassword1}
               onChange={(e) => setResetPassword1(e.target.value)}
               maxLength={100}
@@ -1024,6 +1031,7 @@ export default function App() {
             <input
               type="password"
               placeholder="אימות סיסמה חדשה"
+              aria-label="אימות סיסמה חדשה"
               value={resetPassword2}
               onChange={(e) => setResetPassword2(e.target.value)}
               maxLength={100}
@@ -1078,6 +1086,7 @@ export default function App() {
                 autoFocus
                 type="email"
                 placeholder="כתובת אימייל"
+                aria-label="כתובת אימייל"
                 value={forgotEmail}
                 onChange={(e) => setForgotEmail(e.target.value)}
                 maxLength={200}
@@ -1141,6 +1150,7 @@ export default function App() {
             autoFocus
             type="text"
             placeholder="שם משתמשת"
+            aria-label="שם משתמשת"
             value={authName}
             onChange={(e) => setAuthName(e.target.value)}
             maxLength={30}
@@ -1149,6 +1159,7 @@ export default function App() {
             <input
               type="email"
               placeholder="כתובת אימייל (שהוזמנה למערכת)"
+              aria-label="כתובת אימייל (שהוזמנה למערכת)"
               value={authEmail}
               onChange={(e) => setAuthEmail(e.target.value)}
               maxLength={200}
@@ -1158,6 +1169,7 @@ export default function App() {
           <input
             type="password"
             placeholder="סיסמה"
+            aria-label="סיסמה"
             value={authPassword}
             onChange={(e) => setAuthPassword(e.target.value)}
             maxLength={100}
@@ -1822,13 +1834,15 @@ export default function App() {
           autoFocus
           type="password"
           placeholder="סיסמה נוכחית"
+          aria-label="סיסמה נוכחית"
           value={currentPasswordInput}
           onChange={(e) => setCurrentPasswordInput(e.target.value)}
           maxLength={100}
         />
         <input
           type="password"
-          placeholder="סיסמה חדשה (לפחות 6 תווים)"
+          placeholder="סיסמה חדשה (לפחות 8 תווים)"
+          aria-label="סיסמה חדשה (לפחות 8 תווים)"
           value={newPasswordInput}
           onChange={(e) => setNewPasswordInput(e.target.value)}
           maxLength={100}

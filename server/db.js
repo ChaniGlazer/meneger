@@ -137,6 +137,23 @@ async function init() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  // Concurrent clock-in requests (e.g. a double click) could otherwise both
+  // insert an open shift for the same user — this makes the DB itself
+  // reject a second one instead of relying on application-level timing.
+  // Wrapped separately: if some existing deployment already has duplicate
+  // open shifts for a user, creating this index fails, and that shouldn't
+  // block the whole app from starting up.
+  try {
+    await query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS time_logs_one_open_shift_per_user
+      ON time_logs (user_id) WHERE clock_out IS NULL
+    `);
+  } catch (err) {
+    console.error(
+      "לא ניתן היה ליצור אינדקס ייחודי על time_logs (כנראה שיש רשומות פתוחות כפולות קיימות):",
+      err.message
+    );
+  }
 
   await query(`
     CREATE TABLE IF NOT EXISTS conversations (

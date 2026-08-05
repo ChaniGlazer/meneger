@@ -321,7 +321,11 @@ export default function AdminDashboard({ myUserId, myRole }) {
     }
   }
 
+  // Guards against a fast filter change letting an older, slower response
+  // overwrite the table with stale data after a newer request already won.
+  const tasksRequestIdRef = useRef(0);
   function fetchTasks() {
+    const requestId = ++tasksRequestIdRef.current;
     setTasksLoading(true);
     setTasksError("");
     const params = new URLSearchParams();
@@ -329,9 +333,15 @@ export default function AdminDashboard({ myUserId, myRole }) {
     if (taskStatus) params.set("status", taskStatus);
     if (taskPriority) params.set("priority", taskPriority);
     authedFetch(`admin/tasks?${params.toString()}`)
-      .then((data) => setTasks(data.tasks))
-      .catch((err) => setTasksError(err.message))
-      .finally(() => setTasksLoading(false));
+      .then((data) => {
+        if (requestId === tasksRequestIdRef.current) setTasks(data.tasks);
+      })
+      .catch((err) => {
+        if (requestId === tasksRequestIdRef.current) setTasksError(err.message);
+      })
+      .finally(() => {
+        if (requestId === tasksRequestIdRef.current) setTasksLoading(false);
+      });
   }
 
   useEffect(fetchTasks, [taskAssignedTo, taskStatus, taskPriority]);
@@ -429,7 +439,9 @@ export default function AdminDashboard({ myUserId, myRole }) {
     }
   }
 
+  const hoursRequestIdRef = useRef(0);
   function fetchHoursReport() {
+    const requestId = ++hoursRequestIdRef.current;
     setHoursLoading(true);
     setHoursError("");
     const params = new URLSearchParams();
@@ -437,9 +449,15 @@ export default function AdminDashboard({ myUserId, myRole }) {
     if (hoursTo) params.set("to", hoursTo);
     if (hoursUserId) params.set("user_id", hoursUserId);
     authedFetch(`admin/hours-report?${params.toString()}`)
-      .then((data) => setHoursReport(data.report))
-      .catch((err) => setHoursError(err.message))
-      .finally(() => setHoursLoading(false));
+      .then((data) => {
+        if (requestId === hoursRequestIdRef.current) setHoursReport(data.report);
+      })
+      .catch((err) => {
+        if (requestId === hoursRequestIdRef.current) setHoursError(err.message);
+      })
+      .finally(() => {
+        if (requestId === hoursRequestIdRef.current) setHoursLoading(false);
+      });
   }
 
   useEffect(() => {
@@ -447,7 +465,9 @@ export default function AdminDashboard({ myUserId, myRole }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const timeLogEntriesRequestIdRef = useRef(0);
   function fetchTimeLogEntries() {
+    const requestId = ++timeLogEntriesRequestIdRef.current;
     if (!hoursUserId) {
       setTimeLogEntries([]);
       return;
@@ -458,9 +478,15 @@ export default function AdminDashboard({ myUserId, myRole }) {
     if (hoursFrom) params.set("from", hoursFrom);
     if (hoursTo) params.set("to", hoursTo);
     authedFetch(`time-logs?${params.toString()}`)
-      .then((data) => setTimeLogEntries(data.timeLogs))
-      .catch((err) => setTimeLogEntriesError(err.message))
-      .finally(() => setTimeLogEntriesLoading(false));
+      .then((data) => {
+        if (requestId === timeLogEntriesRequestIdRef.current) setTimeLogEntries(data.timeLogs);
+      })
+      .catch((err) => {
+        if (requestId === timeLogEntriesRequestIdRef.current) setTimeLogEntriesError(err.message);
+      })
+      .finally(() => {
+        if (requestId === timeLogEntriesRequestIdRef.current) setTimeLogEntriesLoading(false);
+      });
   }
 
   useEffect(() => {

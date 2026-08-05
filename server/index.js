@@ -63,12 +63,28 @@ const {
 const { hashPassword, verifyPassword, createToken } = require("./auth");
 const { upload, saveToStorage, deleteFromStorage, getPublicUrl } = require("./upload");
 const { sendEmail } = require("./mailer");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 
 const PORT = process.env.PORT || 4000;
 
 const app = express();
+app.disable("x-powered-by");
+app.use(helmet());
 app.use(cors());
 app.use(express.json());
+
+// Login/register/forgot-password/reset-password are the only endpoints an
+// attacker can hit without already having a valid token, which makes them
+// the ones worth throttling against brute-force/spam — everything else
+// requires requireAuth first.
+const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "יותר מדי ניסיונות, נסי שוב בעוד כמה דקות" },
+});
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -85,6 +101,23 @@ function ah(fn) {
 const sessions = new Map();
 // socket.id -> { username, activeConversationId }
 const clients = new Map();
+
+// socket.id -> { count, windowStart } — a basic fixed-window throttle
+// against message flooding, since Socket.IO events bypass the REST
+// rate limiter entirely.
+const messageRateLimits = new Map();
+const MESSAGE_RATE_WINDOW_MS = 10 * 1000;
+const MESSAGE_RATE_MAX = 20;
+function isMessageRateLimited(socketId) {
+  const now = Date.now();
+  const entry = messageRateLimits.get(socketId);
+  if (!entry || now - entry.windowStart > MESSAGE_RATE_WINDOW_MS) {
+    messageRateLimits.set(socketId, { count: 1, windowStart: now });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > MESSAGE_RATE_MAX;
+}
 
 async function broadcastPresence(conversationId) {
   const members = await getConversationMembers(conversationId);
@@ -105,6 +138,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 app.post(
   "/api/register",
+  authRateLimit,
   ah(async (req, res) => {
     const username = String(req.body?.username || "").trim().slice(0, 30);
     const password = String(req.body?.password || "");
@@ -113,8 +147,8 @@ app.post(
     if (username.length < 2) {
       return res.status(400).json({ error: "שם המשתמשת חייב להכיל לפחות 2 תווים" });
     }
-    if (password.length < 6) {
-      return res.status(400).json({ error: "הסיסמה חייבת להכיל לפחות 6 תווים" });
+    if (password.length < 8) {
+      return res.status(400).json({ error: "הסיסמה חייבת להכיל לפחות 8 תווים" });
     }
     if (!EMAIL_RE.test(email)) {
       return res.status(400).json({ error: "יש להזין כתובת אימייל תקינה" });
@@ -142,6 +176,7 @@ app.post(
 
 app.post(
   "/api/login",
+  authRateLimit,
   ah(async (req, res) => {
     const username = String(req.body?.username || "").trim().slice(0, 30);
     const password = String(req.body?.password || "");
@@ -212,7 +247,7 @@ app.post(
     const newPassword = String(req.body?.newPassword || "");
 
     if (newPassword.length < 6) {
-      return res.status(400).json({ error: "הסיסמה החדשה חייבת להכיל לפחות 6 תווים" });
+      return res.status(400).json({ error: "הסיסמה החדשה חייבת להכיל לפחות 8 תווים" });
     }
 
     const user = await findUser(req.username);
@@ -227,6 +262,7 @@ app.post(
 
 app.post(
   "/api/forgot-password",
+  authRateLimit,
   ah(async (req, res) => {
     const email = String(req.body?.email || "").trim().toLowerCase().slice(0, 200);
     if (!EMAIL_RE.test(email)) {
@@ -261,14 +297,15 @@ app.post(
 
 app.post(
   "/api/reset-password",
+  authRateLimit,
   ah(async (req, res) => {
     const token = String(req.body?.token || "");
     const password = String(req.body?.password || "");
     if (!token) {
       return res.status(400).json({ error: "קישור לא תקין" });
     }
-    if (password.length < 6) {
-      return res.status(400).json({ error: "הסיסמה חייבת להכיל לפחות 6 תווים" });
+    if (password.length < 8) {
+      return res.status(400).json({ error: "הסיסמה חייבת להכיל לפחות 8 תווים" });
     }
 
     const reset = await findPasswordReset(token);
@@ -333,6 +370,9 @@ app.post(
 
     if (!name) {
       return res.status(400).json({ error: "יש להזין שם לקבוצה" });
+    }
+    if (rawMembers.length > 200) {
+      return res.status(400).json({ error: "יותר מדי חברות בבת אחת (מקסימום 200)" });
     }
 
     const cleanMembers = [...new Set(rawMembers.map((m) => String(m).trim()))].filter(
@@ -814,7 +854,17 @@ app.post(
       }
     }
 
-    const timeLog = await createTimeLog({ user_id: userId, clock_in: clockIn, clock_out: clockOut, task_id: taskId });
+    let timeLog;
+    try {
+      timeLog = await createTimeLog({ user_id: userId, clock_in: clockIn, clock_out: clockOut, task_id: taskId });
+    } catch (err) {
+      // Unique violation on time_logs_one_open_shift_per_user — a "כניסה"
+      // is already open for this user.
+      if (err.code === "23505") {
+        return res.status(409).json({ error: "כבר קיימת כניסה פתוחה למשתמשת הזו" });
+      }
+      throw err;
+    }
     res.status(201).json({ timeLog });
   })
 );
@@ -939,7 +989,15 @@ app.patch(
       fields.user_id = userId;
     }
 
-    const timeLog = await updateTimeLog(id, fields);
+    let timeLog;
+    try {
+      timeLog = await updateTimeLog(id, fields);
+    } catch (err) {
+      if (err.code === "23505") {
+        return res.status(409).json({ error: "כבר קיימת כניסה פתוחה למשתמשת הזו" });
+      }
+      throw err;
+    }
     res.json({ timeLog });
   })
 );
@@ -1167,6 +1225,9 @@ app.post(
   requireAdmin,
   ah(async (req, res) => {
     const rawEmails = Array.isArray(req.body?.emails) ? req.body.emails : [];
+    if (rawEmails.length > 200) {
+      return res.status(400).json({ error: "יותר מדי כתובות בבת אחת (מקסימום 200)" });
+    }
     const candidates = [
       ...new Set(rawEmails.map((e) => String(e).trim().toLowerCase().slice(0, 200))),
     ];
@@ -1400,6 +1461,7 @@ io.on(
               }
             : null;
         if (!client || !client.activeConversationId || (!clean && !safeAttachment)) return;
+        if (isMessageRateLimited(socket.id)) return;
 
         let replyToId = Number(replyTo);
         if (!Number.isInteger(replyToId)) {
@@ -1487,11 +1549,23 @@ io.on(
       sh(async () => {
         const client = clients.get(socket.id);
         clients.delete(socket.id);
+        messageRateLimits.delete(socket.id);
         if (client) await broadcastPresenceForUser(client.username);
       })
     );
   }
 );
+
+// Every REST handler is wrapped in ah() and every socket handler in sh(),
+// so in normal operation nothing should reach here — this is a last-resort
+// net so a bug that slips through logs loudly instead of silently killing
+// the one process serving every connected user.
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled promise rejection:", err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
+});
 
 init()
   .then(() => {
