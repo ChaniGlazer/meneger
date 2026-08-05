@@ -1235,6 +1235,17 @@ button, input, select, textarea {
   word-break: break-word;
 }
 
+.bubble-text a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.bubble-text a:hover {
+  text-decoration-thickness: 2px;
+}
+
 .emoji {
   height: 1.2em;
   width: 1.2em;
