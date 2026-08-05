@@ -1583,6 +1583,7 @@ button, input, select, textarea {
   border-radius: var(--radius-sm);
   transition: transform var(--dur-fast) var(--ease-spring),
               background-color var(--dur-fast) var(--ease-out);
+  forced-color-adjust: none;
 }
 
 .reaction-picker button:hover {
@@ -1765,8 +1766,8 @@ button, input, select, textarea {
 
 .emoji-picker-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
-  gap: var(--space-1);
+  grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
+  gap: 1px;
 }
 
 .emoji-picker-item {
@@ -1774,16 +1775,21 @@ button, input, select, textarea {
   align-items: center;
   justify-content: center;
   aspect-ratio: 1;
-  min-width: 36px;
-  min-height: 36px;
+  min-width: 32px;
+  min-height: 32px;
   border: none;
   outline: none;
   background: none;
-  padding: var(--space-1);
+  padding: 2px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease-out),
               transform var(--dur-fast) var(--ease-spring);
+  /* Windows "forced colors"/high-contrast mode otherwise fills every
+     <button> with the OS accent color, which is what was showing as a
+     permanent navy tile behind each emoji regardless of our background
+     value — this keeps the picker's own (background-less) styling. */
+  forced-color-adjust: none;
 }
 
 .emoji-picker-item:hover {
