@@ -1492,6 +1492,11 @@ button, input, select, textarea {
 }
 
 .reaction-picker button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
   border: none;
   background: none;
   font-size: var(--text-lg);
@@ -1657,22 +1662,42 @@ button, input, select, textarea {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
+}
+
+.emoji-picker {
+  width: 300px;
+  max-height: 280px;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--space-2);
+  scrollbar-gutter: stable;
+  box-sizing: border-box;
+}
+
+.emoji-picker-label {
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  padding: 0 var(--space-1) var(--space-1);
+}
+
+.emoji-picker-divider {
+  border-top: 1px solid var(--border-subtle);
+  margin: var(--space-2) 0;
 }
 
 .emoji-picker-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
   gap: var(--space-1);
-  max-height: 220px;
-  width: 280px;
-  overflow-y: auto;
 }
 
 .emoji-picker-item {
   display: flex;
   align-items: center;
   justify-content: center;
+  aspect-ratio: 1;
+  min-width: 36px;
+  min-height: 36px;
   border: none;
   background: none;
   padding: var(--space-1);
@@ -1682,7 +1707,8 @@ button, input, select, textarea {
               transform var(--dur-fast) var(--ease-spring);
 }
 
-.emoji-picker-item:hover {
+.emoji-picker-item:hover,
+.emoji-picker-item:focus-visible {
   background: var(--bg-surface-hover);
   transform: scale(1.15);
 }
