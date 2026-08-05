@@ -63,6 +63,7 @@ const {
 const { hashPassword, verifyPassword, createToken } = require("./auth");
 const { upload, saveToStorage, deleteFromStorage, getPublicUrl } = require("./upload");
 const { sendEmail } = require("./mailer");
+const { fetchLinkPreview } = require("./linkPreview");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 
@@ -229,6 +230,30 @@ const requireTeamLeadOrAdmin = ah(async (req, res, next) => {
   req.currentUser = user;
   next();
 });
+
+const linkPreviewRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "יותר מדי בקשות, נסי שוב בעוד רגע" },
+});
+
+app.get(
+  "/api/link-preview",
+  requireAuth,
+  linkPreviewRateLimit,
+  ah(async (req, res) => {
+    const url = String(req.query.url || "");
+    if (!url) return res.status(400).json({ error: "חסרה כתובת" });
+    try {
+      const preview = await fetchLinkPreview(url);
+      res.json(preview);
+    } catch (err) {
+      res.status(err.status || 502).json({ error: err.message || "שגיאה בטעינת תצוגה מקדימה" });
+    }
+  })
+);
 
 app.get(
   "/api/me",

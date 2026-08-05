@@ -1,8 +1,5 @@
 import { splitEmoji, emojiSrc } from "../emoji";
-
-// Trailing punctuation is excluded from the match so "(see example.com)."
-// doesn't swallow the closing paren/period into the link.
-const URL_RE = /(https?:\/\/[^\s<]+[^\s<.,!?;:'")\]}]|www\.[^\s<]+[^\s<.,!?;:'")\]}])/gi;
+import { URL_RE } from "../linkify";
 
 function renderTextWithEmoji(text, keyPrefix) {
   const parts = splitEmoji(text);

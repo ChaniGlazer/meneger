@@ -9,6 +9,8 @@ import Modal from "./components/Modal";
 import ConfirmDialog from "./components/ConfirmDialog";
 import EmojiText from "./components/EmojiText";
 import EmojiPicker from "./components/EmojiPicker";
+import LinkPreview from "./components/LinkPreview";
+import { firstUrl } from "./linkify";
 import { SendIcon, AttachIcon, EditIcon, TrashIcon, ReplyIcon } from "./components/Icon";
 import { TASK_STATUS_COLUMNS, TASK_PRIORITY_LABELS } from "./taskMeta";
 
@@ -1489,6 +1491,7 @@ export default function App() {
                       <EmojiText text={m.text} />
                     </div>
                   )}
+                  {m.text && <LinkPreview url={firstUrl(m.text)} />}
                 </>
               )}
 
