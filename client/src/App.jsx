@@ -85,6 +85,40 @@ function playPing() {
   }
 }
 
+// Asked for once after a successful login/session restore. Browsers that
+// don't support the API (or where the user already answered) just no-op —
+// the existing in-app toast/badge/ping already cover every case regardless.
+function requestNotificationPermission() {
+  if (typeof Notification === "undefined") return;
+  if (Notification.permission === "default") {
+    Notification.requestPermission().catch(() => {});
+  }
+}
+
+// Only fires when the tab isn't focused — if you're already looking at the
+// app, the in-app toast/badge/ping are enough and a system popup on top
+// would just be noise.
+function showDesktopNotification(msg, onClick) {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  if (document.hasFocus()) return;
+  try {
+    const body = msg.text ? msg.text.slice(0, 200) : "שלחה קובץ מצורף";
+    const notification = new Notification(msg.username, {
+      body,
+      icon: "/brand/codebloom.svg",
+      tag: `chat-${msg.room}`,
+    });
+    notification.onclick = () => {
+      window.focus();
+      onClick();
+      notification.close();
+    };
+  } catch {
+    // Notification constructor can throw in some contexts; the in-app
+    // toast already covers this message regardless.
+  }
+}
+
 // Mirrors the server's multer limit (server/upload.js) — checking here too
 // means an oversized file is rejected instantly instead of after uploading
 // the whole thing over the network only to have the server reject it.
@@ -188,6 +222,8 @@ export default function App() {
   const activeIdRef = useRef(null);
   const usernameRef = useRef("");
   const myUserIdRef = useRef(null);
+  const conversationsRef = useRef([]);
+  const openConversationRef = useRef(null);
   const toastTimerRef = useRef(null);
   const typingSentRef = useRef(false);
   const typingStopTimerRef = useRef(null);
@@ -284,6 +320,17 @@ export default function App() {
   useEffect(() => {
     usernameRef.current = username;
   }, [username]);
+
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  // Kept fresh every render so the "message" socket handler — registered
+  // once on mount — can call today's openConversation() instead of the one
+  // that existed when the app first loaded.
+  useEffect(() => {
+    openConversationRef.current = openConversation;
+  });
 
   useEffect(() => {
     myUserIdRef.current = myUserId;
@@ -469,6 +516,7 @@ export default function App() {
         setMyUserId(id);
         setMyRole(role);
         socket.connect();
+        requestNotificationPermission();
         enterInbox(id);
       })
       .catch(() => {
@@ -527,17 +575,26 @@ export default function App() {
     socket.on("message", (msg) => {
       const isActive = msg.room === activeIdRef.current;
 
+      const isOwnMessage = msg.username === usernameRef.current;
+
       if (isActive) {
         setMessages((prev) => [...prev, msg]);
         markSeen(msg.room, msg.id);
       } else {
         setUnreadCounts((prev) => ({ ...prev, [msg.room]: (prev[msg.room] || 0) + 1 }));
-        if (msg.username !== usernameRef.current) {
+        if (!isOwnMessage) {
           setToast({ conversationId: msg.room, username: msg.username, text: msg.text });
           clearTimeout(toastTimerRef.current);
           toastTimerRef.current = setTimeout(() => setToast(null), 4000);
           playPing();
         }
+      }
+
+      if (!isOwnMessage) {
+        showDesktopNotification(msg, () => {
+          const row = conversationsRef.current.find((c) => c.id === msg.room);
+          if (row) openConversationRef.current?.(row);
+        });
       }
 
       setConversations((prev) => {
@@ -647,6 +704,7 @@ export default function App() {
       setMyUserId(data.id);
       setMyRole(data.role);
       socket.connect();
+      requestNotificationPermission();
       enterInbox(data.id);
     } catch (err) {
       setAuthError(err.message);
