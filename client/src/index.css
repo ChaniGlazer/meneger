@@ -1140,6 +1140,48 @@ button, input, select, textarea {
   background: var(--bg-canvas);
 }
 
+/* Row wraps the (optional) sender avatar + the bubble itself, and owns the
+   left/right placement that used to live on .bubble via align-self — the
+   avatar needs to share that same start/end alignment. */
+.message-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-1);
+  width: 100%;
+}
+
+.message-row.mine {
+  justify-content: flex-start; /* under RTL this is the right edge — unchanged on purpose */
+}
+
+.message-row.theirs {
+  justify-content: flex-end;
+}
+
+.messages > .message-row.group-start:not(:first-child) {
+  margin-top: var(--space-2);
+}
+
+/* Sender avatar, group-chat only: shown once per consecutive run (on the
+   first bubble) instead of a repeated name label — the spacer keeps the
+   rest of the run's bubbles lined up under it, WhatsApp/Telegram-style. */
+.bubble-avatar,
+.bubble-avatar-spacer {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.bubble-avatar {
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-xs);
+  color: #fff;
+}
+
 .bubble {
   /* both a % cap (so it never spans the whole thread) and a ch cap (so long
      lines don't outrun a comfortable reading measure on a wide window) */
@@ -1152,17 +1194,12 @@ button, input, select, textarea {
   color: var(--fg-default);
 }
 
-.messages > .bubble.group-start:not(:first-child) {
-  margin-top: var(--space-2);
-}
-
 /* asymmetric corner as the ownership cue (3 corners round, 1 sharp "tail"),
    tied to the visual side each bubble renders on, not to text direction.
    Only the last bubble of a consecutive run gets the tail — mid-run bubbles
    stay fully rounded, the same way Telegram/iMessage mark the end of a turn
    rather than every line in it. */
 .bubble.mine {
-  align-self: flex-start;   /* under RTL this is the right edge — unchanged on purpose */
   background: var(--bubble-mine-bg);
   border-color: var(--bubble-mine-border);
   color: var(--fg-default);
@@ -1173,20 +1210,12 @@ button, input, select, textarea {
 }
 
 .bubble.theirs {
-  align-self: flex-end;
   background: var(--bubble-theirs-bg);
   color: var(--fg-default);
 }
 
 .bubble.theirs.group-end {
   border-bottom-left-radius: var(--radius-xs);
-}
-
-.bubble-name {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  color: var(--fg-muted);
-  margin-bottom: var(--space-1);
 }
 
 .bubble-text {

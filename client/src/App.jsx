@@ -19,6 +19,19 @@ function formatTime(iso) {
   return d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
 }
 
+const AVATAR_COLORS = [
+  "#e17076", "#7bc862", "#65aadd", "#a695e7",
+  "#ee7aae", "#6ec9cb", "#faa774", "#5b9bd9",
+];
+
+function colorForUsername(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
 function formatFileSize(bytes) {
   if (bytes == null) return "";
   if (bytes < 1024) return `${bytes} B`;
@@ -1402,18 +1415,35 @@ export default function App() {
             const isGroupStart = i === 0 || messages[i - 1].username !== m.username;
             const isGroupEnd =
               i === messages.length - 1 || messages[i + 1].username !== m.username;
+            const isMine = m.username === username;
+            const showAvatar = active?.type === "group" && !isMine;
             return (
             <div
               key={m.id}
-              id={`message-${m.id}`}
-              className={`bubble ${m.username === username ? "mine" : "theirs"}${
-                m.deleted_at ? " deleted" : ""
-              }${isGroupStart ? " group-start" : ""}${isGroupEnd ? " group-end" : ""}`}
+              className={`message-row ${isMine ? "mine" : "theirs"}${
+                isGroupStart ? " group-start" : ""
+              }`}
             >
-              {active?.type === "group" && !m.deleted_at && isGroupStart && (
-                <div className="bubble-name">{m.username}</div>
+              {showAvatar && (
+                isGroupStart ? (
+                  <div
+                    className="bubble-avatar"
+                    style={{ background: colorForUsername(m.username) }}
+                    title={m.username}
+                    aria-hidden="true"
+                  >
+                    {m.username.slice(0, 1).toUpperCase()}
+                  </div>
+                ) : (
+                  <div className="bubble-avatar-spacer" aria-hidden="true" />
+                )
               )}
-
+              <div
+                id={`message-${m.id}`}
+                className={`bubble ${isMine ? "mine" : "theirs"}${
+                  m.deleted_at ? " deleted" : ""
+                }${isGroupStart ? " group-start" : ""}${isGroupEnd ? " group-end" : ""}`}
+              >
               {!m.deleted_at && m.reply_to && (
                 <button
                   type="button"
@@ -1553,6 +1583,7 @@ export default function App() {
                   )}
                 </div>
               )}
+              </div>
             </div>
             );
           })}
