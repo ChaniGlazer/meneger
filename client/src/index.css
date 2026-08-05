@@ -1156,10 +1156,6 @@ button, input, select, textarea {
 
 .message-row.theirs {
   justify-content: flex-end;
-  /* row's main-start is the physical right under RTL, so without this the
-     avatar (first in DOM) would land beside center instead of on the
-     outer-left edge where "theirs" bubbles sit. */
-  flex-direction: row-reverse;
 }
 
 .messages > .message-row.group-start:not(:first-child) {
@@ -1174,6 +1170,11 @@ button, input, select, textarea {
   width: 28px;
   height: 28px;
   flex-shrink: 0;
+  /* row's main-start is the physical right under RTL, so without this the
+     avatar (first in DOM) would land beside center instead of on the
+     outer-left edge where "theirs" bubbles are aligned; `order` moves it
+     there without touching the group's own flex-end alignment. */
+  order: 2;
 }
 
 .bubble-avatar {
