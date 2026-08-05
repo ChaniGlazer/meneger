@@ -1498,6 +1498,7 @@ button, input, select, textarea {
   min-width: 32px;
   min-height: 32px;
   border: none;
+  outline: none;
   background: none;
   font-size: var(--text-lg);
   cursor: pointer;
@@ -1699,6 +1700,7 @@ button, input, select, textarea {
   min-width: 36px;
   min-height: 36px;
   border: none;
+  outline: none;
   background: none;
   padding: var(--space-1);
   border-radius: var(--radius-sm);
@@ -1707,15 +1709,20 @@ button, input, select, textarea {
               transform var(--dur-fast) var(--ease-spring);
 }
 
-.emoji-picker-item:hover,
-.emoji-picker-item:focus-visible {
+.emoji-picker-item:hover {
   background: var(--bg-surface-hover);
   transform: scale(1.15);
+}
+
+.emoji-picker-item:focus-visible {
+  background: var(--bg-surface-hover);
 }
 
 .emoji-picker-item .emoji {
   height: 1.4em;
   width: 1.4em;
+  border: none;
+  outline: none;
 }
 
 /* ============================================================================
