@@ -1400,6 +1400,27 @@ button, input, select, textarea {
   margin-top: var(--space-0-5);
 }
 
+/* The "⋮" dropdown and reaction picker pop up *above* the footer via
+   `position: absolute; bottom: 100%` — with the footer's own
+   `overflow: hidden` (needed for its collapse animation) still in effect,
+   that popup content was clipped away entirely: the click worked and the
+   state toggled, but nothing was ever visible. Once either is open, let
+   the footer overflow so the popup can actually render. */
+.bubble:has(.menu-dropdown) .bubble-footer,
+.bubble:has(.reaction-picker) .bubble-footer {
+  overflow: visible;
+}
+
+/* Touch devices have no persistent :hover, so a collapsed footer never
+   receives the first tap. Keep it always expanded there. */
+@media (hover: none) {
+  .bubble-footer {
+    max-height: 20px;
+    opacity: 1;
+    margin-top: var(--space-0-5);
+  }
+}
+
 .bubble-time {
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
@@ -1504,6 +1525,13 @@ button, input, select, textarea {
 .bubble:focus-within .bubble-reaction-wrap .menu-trigger,
 .bubble-reaction-wrap:has(.reaction-picker) .menu-trigger {
   opacity: 1;
+}
+
+@media (hover: none) {
+  .bubble-menu-wrap .menu-trigger,
+  .bubble-reaction-wrap .menu-trigger {
+    opacity: 1;
+  }
 }
 
 /* Table-row menus have no bubble to hover; the trigger is always visible,
