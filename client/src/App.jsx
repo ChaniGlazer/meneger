@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { io } from "socket.io-client";
 import { api, authedFetch, uploadFile, setUnauthorizedHandler, logout as logoutRequest } from "./api";
 import TimeClock from "./TimeClock";
@@ -19,6 +20,43 @@ const socket = io(import.meta.env.VITE_SOCKET_URL || undefined, { autoConnect: f
 function formatTime(iso) {
   const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
   return d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+}
+
+// Positions a portaled popover against `anchorRef` in viewport (fixed)
+// coordinates, so it can pop out of any scrolling ancestor instead of being
+// clipped by it. Opens above the anchor unless there isn't room, in which
+// case it flips below. `key` identifies *which* anchor is active (e.g. a
+// message id) so the position recomputes when the open popover switches
+// targets, not just when open/closed toggles.
+function usePopoverPosition(key, anchorRef, estimatedHeight) {
+  const [style, setStyle] = useState(null);
+
+  useLayoutEffect(() => {
+    if (key == null || !anchorRef.current) {
+      setStyle(null);
+      return;
+    }
+    function reposition() {
+      const rect = anchorRef.current.getBoundingClientRect();
+      const gap = 4;
+      const openBelow = rect.top < estimatedHeight + gap;
+      setStyle({
+        position: "fixed",
+        left: rect.left,
+        right: "auto",
+        top: openBelow ? rect.bottom + gap : "auto",
+        bottom: openBelow ? "auto" : window.innerHeight - rect.top + gap,
+        // Above the fixed-position topbar (z-index: 50) and any other
+        // in-flow content; below the toast/modal layer (90/100).
+        zIndex: 60,
+      });
+    }
+    reposition();
+    window.addEventListener("resize", reposition);
+    return () => window.removeEventListener("resize", reposition);
+  }, [key, anchorRef, estimatedHeight]);
+
+  return style;
 }
 
 const AVATAR_COLORS = [
@@ -245,8 +283,16 @@ export default function App() {
   const typingExpiryTimersRef = useRef(new Map());
   const reactionPickerRef = useRef(null);
   const messageMenuRef = useRef(null);
+  const reactionPanelRef = useRef(null);
+  const menuPanelRef = useRef(null);
   const composerEmojiRef = useRef(null);
   const draftTextareaRef = useRef(null);
+
+  // Portaled to document.body (see the JSX below), so they need their own
+  // viewport-relative position instead of the CSS `position: absolute`
+  // an in-place popover could use.
+  const reactionPickerStyle = usePopoverPosition(reactionPickerFor, reactionPickerRef, 56);
+  const menuDropdownStyle = usePopoverPosition(messageMenuFor, messageMenuRef, 140);
 
   useEffect(() => {
     activeIdRef.current = active?.id ?? null;
@@ -257,7 +303,10 @@ export default function App() {
     if (reactionPickerFor == null) return;
 
     function handlePointerDown(e) {
-      if (!reactionPickerRef.current?.contains(e.target)) {
+      if (
+        !reactionPickerRef.current?.contains(e.target) &&
+        !reactionPanelRef.current?.contains(e.target)
+      ) {
         setReactionPickerFor(null);
       }
     }
@@ -278,7 +327,10 @@ export default function App() {
     if (messageMenuFor == null) return;
 
     function handlePointerDown(e) {
-      if (!messageMenuRef.current?.contains(e.target)) {
+      if (
+        !messageMenuRef.current?.contains(e.target) &&
+        !menuPanelRef.current?.contains(e.target)
+      ) {
         setMessageMenuFor(null);
       }
     }
@@ -1444,7 +1496,9 @@ export default function App() {
                 id={`message-${m.id}`}
                 className={`bubble ${isMine ? "mine" : "theirs"}${
                   m.deleted_at ? " deleted" : ""
-                }${isGroupStart ? " group-start" : ""}${isGroupEnd ? " group-end" : ""}`}
+                }${isGroupStart ? " group-start" : ""}${isGroupEnd ? " group-end" : ""}${
+                  reactionPickerFor === m.id || messageMenuFor === m.id ? " menu-open" : ""
+                }`}
               >
               {!m.deleted_at && m.reply_to && (
                 <button
@@ -1534,20 +1588,27 @@ export default function App() {
                       >
                         <EmojiText text="😊" />
                       </button>
-                      {reactionPickerFor === m.id && (
-                        <div className="reaction-picker">
-                          {REACTION_EMOJIS.map((emoji) => (
-                            <button
-                              key={emoji}
-                              type="button"
-                              aria-label={emoji}
-                              onClick={() => handleToggleReaction(m.id, emoji)}
-                            >
-                              <EmojiText text={emoji} />
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      {reactionPickerFor === m.id &&
+                        reactionPickerStyle &&
+                        createPortal(
+                          <div
+                            className="reaction-picker"
+                            ref={reactionPanelRef}
+                            style={reactionPickerStyle}
+                          >
+                            {REACTION_EMOJIS.map((emoji) => (
+                              <button
+                                key={emoji}
+                                type="button"
+                                aria-label={emoji}
+                                onClick={() => handleToggleReaction(m.id, emoji)}
+                              >
+                                <EmojiText text={emoji} />
+                              </button>
+                            ))}
+                          </div>,
+                          document.body
+                        )}
                     </div>
                   )}
                   {!m.deleted_at && (
@@ -1565,23 +1626,30 @@ export default function App() {
                       >
                         ⋮
                       </button>
-                      {messageMenuFor === m.id && (
-                        <div className="menu-dropdown">
-                          <button type="button" onClick={() => startReplyingToMessage(m)}>
-                            <ReplyIcon /> הגיבי
-                          </button>
-                          {m.username === username && m.text && !m.attachment && (
-                            <button type="button" onClick={() => startEditingMessage(m)}>
-                              <EditIcon /> עריכה
+                      {messageMenuFor === m.id &&
+                        menuDropdownStyle &&
+                        createPortal(
+                          <div
+                            className="menu-dropdown"
+                            ref={menuPanelRef}
+                            style={menuDropdownStyle}
+                          >
+                            <button type="button" onClick={() => startReplyingToMessage(m)}>
+                              <ReplyIcon /> הגיבי
                             </button>
-                          )}
-                          {m.username === username && (
-                            <button type="button" onClick={() => handleDeleteMessage(m)}>
-                              <TrashIcon /> מחיקה
-                            </button>
-                          )}
-                        </div>
-                      )}
+                            {m.username === username && m.text && !m.attachment && (
+                              <button type="button" onClick={() => startEditingMessage(m)}>
+                                <EditIcon /> עריכה
+                              </button>
+                            )}
+                            {m.username === username && (
+                              <button type="button" onClick={() => handleDeleteMessage(m)}>
+                                <TrashIcon /> מחיקה
+                              </button>
+                            )}
+                          </div>,
+                          document.body
+                        )}
                     </div>
                   )}
                 </div>
